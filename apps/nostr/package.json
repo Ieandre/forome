@@ -1,0 +1,33 @@
+{
+  "name": "@forome/nostr-client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "nuxt dev --dotenv ../../.env",
+    "build": "nuxt build --dotenv ../../.env",
+    "preview": "nuxt preview",
+    "typecheck": "nuxt typecheck",
+    "postinstall": "nuxt prepare",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@fontsource-variable/bricolage-grotesque": "^5.3.0",
+    "@fontsource-variable/instrument-sans": "^5.3.0",
+    "@fontsource-variable/spline-sans-mono": "^5.3.0",
+    "@pinia/nuxt": "^0.9.0",
+    "nostr-tools": "^2.10.4",
+    "nuxt": "^3.15.0",
+    "pinia": "^2.3.0",
+    "qrcode": "^1.5.4",
+    "vue": "^3.5.13",
+    "vue-router": "^4.5.0"
+  },
+  "devDependencies": {
+    "@types/qrcode": "^1.5.6",
+    "happy-dom": "^20.11.2",
+    "typescript": "^5.7.3",
+    "vitest": "^3.2.7",
+    "vue-tsc": "^2.2.0"
+  }
+}

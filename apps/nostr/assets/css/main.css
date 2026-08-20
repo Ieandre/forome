@@ -1,0 +1,818 @@
+/*
+ * Forome — charte graphique.
+ *
+ * La version précédente reproduisait les forums de jeuxvideo.com trait pour
+ * trait : page grise, panneaux blancs bordés, en-têtes de tableau, zébrage,
+ * titres en bleu lien, densité 13 px, barre de site quasi noire. C'était juste,
+ * et c'était daté — le forum ressemblait à ce qu'il imite plutôt qu'à ce qu'il
+ * est. Il ne reste de l'hommage que ce que la refonte a gardé exprès : UN ORANGE
+ * ET UN BLEU.
+ *
+ * ── LA THÈSE ─────────────────────────────────────────────────────────────────
+ * Le forum promet « tu lis en 2 secondes ce qui chauffe ». L'écran doit donc
+ * répondre AVANT lecture. D'où un système où la couleur n'est jamais décorative :
+ *
+ *   ORANGE (`--brand`) = LE FORUM. Sa chaleur, ce qui arrive, ce qui attend :
+ *                        rail de chauffe, compteur chaud, post racine, MP non
+ *                        lus, pilule « +N nouveaux ».
+ *   BLEU   (`--link`)  = L'INTERFACE. Ce que tu fais et où tu es : boutons,
+ *                        liens, onglet actif, rangée ouverte, auteurs, toi,
+ *                        focus.
+ *
+ * Les deux ne se croisent jamais, et surtout **l'orange n'est pas une couleur
+ * de bouton**. Il l'a été une première fois, et c'était l'erreur de conception
+ * de la refonte : un bouton est là en permanence, donc un orange posé dessus
+ * brûle en permanence — un signal qui ne s'éteint jamais n'est plus un signal.
+ * Il imposait au passage l'encre noire (voir plus bas), et un aplat orange à
+ * texte noir a le langage du ruban de chantier.
+ *
+ * Conséquence assumée : sur un forum calme, l'écran est quasi monochrome et
+ * l'orange a presque disparu. C'est le but. Le jour où un topic prend feu, il
+ * est la seule chose colorée de la page.
+ *
+ * ── LA SIGNATURE : LE RAIL DE CHAUFFE ────────────────────────────────────────
+ * Chaque rangée de topic porte à gauche une capsule de 3 px dont la HAUTEUR DE
+ * REMPLISSAGE suit la vélocité du topic (`.heat`, plus bas). Ce n'est pas un
+ * ornement : c'est la même donnée qui pilotait déjà l'intensité du compteur,
+ * rendue lisible en périphérie plutôt qu'en chiffres à déchiffrer. La liste
+ * devient une bande de température.
+ *
+ * ── L'ENCRE SUR L'ORANGE ─────────────────────────────────────────────────────
+ * `#FF5C00` ne porte pas de blanc : 3.10:1, sous le plancher AA. Les rares
+ * aplats orange qui restent (la pilule « +N nouveaux », les pastilles de non-lu)
+ * portent donc `--brand-on`, un brun très sombre à 5.20:1 — et non du noir pur,
+ * qui donnait l'étiquette de soldes.
+ *
+ * Cette contrainte est exactement ce qui a révélé la faute de système : quand
+ * une couleur ne peut pas porter de texte lisible sans se déguiser, c'est
+ * souvent qu'on lui demande un travail qui n'est pas le sien.
+ * Pour l'orange EN TEXTE sur fond clair, `--brand-ink` (5.23:1).
+ *
+ * ── TYPOGRAPHIE ──────────────────────────────────────────────────────────────
+ *   display  Bricolage Grotesque — wordmark, titres, gros états. Avec retenue :
+ *            jamais sous 16 px, jamais dans une rangée de liste.
+ *   texte    Instrument Sans — grotesque contemporaine, propre en petit corps.
+ *   mono     Spline Sans Mono — la provenance (heure, nº de post, discriminant).
+ * Geist est parti : c'est la fonte par défaut de tous les outils dev de 2025,
+ * elle ne dit rien de ce forum-ci.
+ *
+ * ── DEUX RÈGLES DE COHÉRENCE ─────────────────────────────────────────────────
+ *   RAYONS : contrôles 9 px, panneaux 16 px, pastilles 6 px, pilules 999 px.
+ *   PROFONDEUR : la séparation se fait à l'espace et à la teinte. Un filet de
+ *   1 px est une exception qui se justifie (rangées d'un même registre), pas le
+ *   mode de construction par défaut.
+ *
+ * Pas de framework CSS : variables globales + BEM-like dans chaque composant.
+ */
+
+@import '@fontsource-variable/bricolage-grotesque/index.css';
+@import '@fontsource-variable/instrument-sans/index.css';
+@import '@fontsource-variable/spline-sans-mono/index.css';
+
+:root {
+  /* ---- Surfaces ----
+     Le canevas est franchement plus sombre que les panneaux : ceux-ci flottent
+     dessus avec leur propre ombre, c'est ce qui remplace les bordures partout. */
+  --page: #e9ecf2;
+  --surface: #ffffff;
+  --surface-2: #f2f4f8; /* chrome interne : pieds de composeur, en-têtes */
+  --surface-3: #e8ecf3; /* survol */
+  --surface-sunken: #f1f4f9; /* champs, blocs de code */
+
+  /* ---- Encre ---- */
+  --ink: #0d1117;
+  --ink-2: #3d4654;
+  --ink-3: #6b7684;
+  --ink-4: #8a94a5;
+
+  /* ---- Orange : la chaleur du forum, jamais une action ---- */
+  --brand: #ff5c00;
+  --brand-strong: #e64f00; /* survol, pressé */
+  --brand-soft: #fff0e6; /* aplats légers */
+  --brand-on: #401200; /* encre SUR l'orange — voir l'en-tête */
+  --brand-ink: #c43d00; /* orange EN TEXTE sur fond clair */
+
+  /* ---- Bleu : l'interface — ce que tu fais, où tu es ---- */
+  --link: #2b4fe8;
+  --link-hover: #1e3bc4;
+  --link-soft: #edf1fe;
+  --link-visited: #7059c9;
+
+  /* ---- États réels seulement ---- */
+  --ok: #0e9f6e;
+  --ok-soft: #e7f7f1;
+  --warn: #d11149;
+  --warn-soft: #fdedf1;
+
+  /* ---- Traits, rares ---- */
+  --line: #dde2ea;
+  --line-soft: #edf0f5;
+  --line-strong: #c6cedb;
+
+  /* ---- Chrome inversé : bulles d'aide, et rien d'autre ----
+     La barre de site noire a disparu ; ces tokens ne servent plus qu'aux
+     couches flottantes qui doivent se lire comme du chrome, pas du contenu. */
+  --bar: #0f141c;
+  --bar-2: #1b2230;
+  --bar-ink: #eef1f7;
+  --bar-ink-2: #98a3b5;
+  --bar-line: #29313f;
+  --brand-bar: #ff8347;
+  --ok-bar: #35d18f;
+  --warn-bar: #ff6b8f;
+
+  /* ---- Rayons ---- */
+  --r-control: 9px;
+  --r-panel: 16px;
+  --r-pastille: 6px;
+
+  /* ---- Profondeur : ombres froides, jamais du noir pur ---- */
+  --elev-1: 0 1px 2px rgba(13, 22, 44, 0.05), 0 1px 3px rgba(13, 22, 44, 0.04);
+  --elev-2: 0 1px 2px rgba(13, 22, 44, 0.05), 0 8px 24px -12px rgba(13, 22, 44, 0.16);
+  --shadow-pop: 0 16px 40px -12px rgba(13, 22, 44, 0.22), 0 4px 10px -4px rgba(13, 22, 44, 0.1);
+  --shadow-bar: 0 1px 0 rgba(13, 22, 44, 0.06);
+  --ring: 0 0 0 3px rgba(43, 79, 232, 0.22);
+
+  /* ---- Le rail de chauffe ----
+     La piste est franchement visible, pas un fantôme : c'est elle qui donne à
+     la colonne sa structure de jauge. Ce qui varie, c'est ce qu'on y allume. */
+  --heat-track: #d5dce6;
+  --heat-glow: 0 0 12px rgba(255, 92, 0, 0.5);
+
+  /* ---- Type ---- */
+  --font-display: 'Bricolage Grotesque Variable', 'Instrument Sans Variable', system-ui, sans-serif;
+  --font-ui: 'Instrument Sans Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'Spline Sans Mono Variable', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+  --fs-xs: 11px;
+  --fs-sm: 12px;
+  --fs-md: 13px;
+  --fs-base: 14px;
+  --fs-lg: 15px;
+  --fs-title: 17px;
+  --fs-h: 22px;
+
+  /* ---- Chrome ---- */
+  --topbar-h: 56px;
+  --forumbar-h: 40px;
+  --gutter: 10px;
+
+  color-scheme: light;
+}
+
+/*
+ * Sombre. Reconstruit, pas inversé : le canevas descend plus bas que les
+ * panneaux (l'inverse du clair, où il monte moins haut), et l'orange est
+ * éclairci pour tenir son contraste sans virer au saumon.
+ */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --page: #0b0e13;
+    --surface: #141922;
+    --surface-2: #1a202a;
+    --surface-3: #222936;
+    --surface-sunken: #10151c;
+
+    --ink: #e9edf4;
+    --ink-2: #afb9c8;
+    --ink-3: #7f8a9b;
+    --ink-4: #626d7e;
+
+    --brand: #ff6b21;
+    --brand-strong: #ff8347;
+    --brand-soft: #2a160b;
+    --brand-on: #2b0c00;
+    --brand-ink: #ff8a4c;
+
+    --link: #7fa0ff;
+    --link-hover: #a0b9ff;
+    --link-soft: #16203a;
+    --link-visited: #a795e0;
+
+    --ok: #2cc08a;
+    --ok-soft: #0f2a22;
+    --warn: #ff5c82;
+    --warn-soft: #2c121b;
+
+    --line: #262e3a;
+    --line-soft: #1d242e;
+    --line-strong: #3a4453;
+
+    --heat-track: #2c3543;
+    --heat-glow: 0 0 14px rgba(255, 107, 33, 0.45);
+
+    --elev-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --elev-2: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 26px -14px rgba(0, 0, 0, 0.8);
+    --shadow-pop: 0 18px 44px -12px rgba(0, 0, 0, 0.7), 0 4px 10px -4px rgba(0, 0, 0, 0.5);
+    --shadow-bar: 0 1px 0 rgba(0, 0, 0, 0.35);
+    --ring: 0 0 0 3px rgba(127, 160, 255, 0.28);
+
+    color-scheme: dark;
+  }
+}
+
+/* Bascule manuelle : gagne dans les deux sens sur la préférence système. */
+:root[data-theme='dark'] {
+  --page: #0b0e13;
+  --surface: #141922;
+  --surface-2: #1a202a;
+  --surface-3: #222936;
+  --surface-sunken: #10151c;
+
+  --ink: #e9edf4;
+  --ink-2: #afb9c8;
+  --ink-3: #7f8a9b;
+  --ink-4: #626d7e;
+
+  --brand: #ff6b21;
+  --brand-strong: #ff8347;
+  --brand-soft: #2a160b;
+  --brand-on: #2b0c00;
+  --brand-ink: #ff8a4c;
+
+  --link: #7fa0ff;
+  --link-hover: #a0b9ff;
+  --link-soft: #16203a;
+  --link-visited: #a795e0;
+
+  --ok: #2cc08a;
+  --ok-soft: #0f2a22;
+  --warn: #ff5c82;
+  --warn-soft: #2c121b;
+
+  --line: #262e3a;
+  --line-soft: #1d242e;
+  --line-strong: #3a4453;
+
+  --heat-track: #2c3543;
+  --heat-glow: 0 0 14px rgba(255, 107, 33, 0.45);
+
+  --elev-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --elev-2: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 26px -14px rgba(0, 0, 0, 0.8);
+  --shadow-pop: 0 18px 44px -12px rgba(0, 0, 0, 0.7), 0 4px 10px -4px rgba(0, 0, 0, 0.5);
+  --shadow-bar: 0 1px 0 rgba(0, 0, 0, 0.35);
+  --ring: 0 0 0 3px rgba(127, 160, 255, 0.28);
+
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--page);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--fs-base);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+#__nuxt {
+  height: 100%;
+}
+
+/* Les chiffres qui se comparent d'une ligne à l'autre sont tabulaires, sinon
+   les colonnes de compteurs dansent à chaque message qui arrive. Spline Sans
+   Mono est légèrement plus large qu'Instrument Sans à corps égal : le -0.02em
+   rend la place que ça prend dans les barres denses. */
+.mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+  letter-spacing: -0.02em;
+}
+
+/* Titres et gros états. Bricolage a du caractère dans les terminaisons : il le
+   donne au wordmark et aux titres, il n'a rien à faire dans une rangée dense. */
+.display {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+}
+
+a {
+  color: var(--link);
+  text-decoration: none;
+}
+a:hover {
+  color: var(--link-hover);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+textarea,
+input,
+select {
+  font-family: inherit;
+  color: inherit;
+}
+
+/* Sélectionner du texte est un geste d'interface, pas un événement du forum. */
+::selection {
+  background: var(--link-soft);
+  color: var(--ink);
+}
+
+:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 2px;
+  border-radius: var(--r-pastille);
+}
+
+hr {
+  border: none;
+  border-top: 1px solid var(--line-soft);
+  margin: 12px 0;
+}
+
+code,
+kbd {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+
+/* ------------------------------------------------------------------ panneaux
+   Le panneau ne se définit plus par sa bordure mais par son élévation : il
+   flotte sur le canevas. La bordure reste, très pâle, uniquement pour tenir le
+   bord en thème sombre où l'ombre ne se voit pas. */
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-panel);
+  box-shadow: var(--elev-2);
+}
+.panel__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line-soft);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--ink-2);
+}
+
+/* ------------------------------------------------------------------- boutons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-control);
+  color: var(--ink);
+  font-size: var(--fs-md);
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: var(--elev-1);
+  transition: background 0.13s ease, border-color 0.13s ease, transform 0.1s ease, box-shadow 0.13s ease;
+}
+.btn:hover {
+  background: var(--surface-3);
+  border-color: var(--line-strong);
+  color: var(--ink);
+  text-decoration: none;
+}
+.btn:active:not(:disabled) {
+  transform: translateY(1px);
+  box-shadow: none;
+}
+.btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* Bleu et non orange : un bouton est une affordance permanente, pas un
+   événement. Voir « LA THÈSE » en tête de fichier. Le bleu porte du blanc à
+   6.20:1, donc aucun compromis d'encre à faire. */
+.btn--primary {
+  background: var(--link);
+  border-color: transparent;
+  color: #fff;
+  font-weight: 700;
+  box-shadow: 0 1px 2px rgba(20, 40, 130, 0.24), 0 6px 16px -8px rgba(43, 79, 232, 0.55);
+}
+.btn--primary:hover {
+  background: var(--link-hover);
+  border-color: transparent;
+  color: #fff;
+}
+/* Un primaire désactivé ne doit pas être « de l'orange délavé » : ça se lit
+   comme un bug plutôt que comme un état. On sort de la couleur de marque. */
+.btn--primary:disabled {
+  opacity: 1;
+  background: var(--surface-3);
+  border-color: var(--line);
+  color: var(--ink-4);
+  box-shadow: none;
+}
+
+.btn--ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--ink-2);
+  box-shadow: none;
+}
+.btn--ghost:hover {
+  background: var(--surface-3);
+  border-color: transparent;
+  color: var(--ink);
+}
+
+/*
+ * L'orange EST l'accent : il porte les primaires et la chauffe. Il ne peut donc
+ * pas dire « danger » à lui seul. Ce qui distingue une action destructive, dans
+ * l'ordre où l'utilisateur le perçoit : la confirmation en deux temps et son
+ * texte qui dit ce qui sera perdu, puis le cramoisi — la seule autre teinte
+ * d'alerte de la charte, franchement distincte de l'orange.
+ */
+.btn--danger {
+  color: var(--warn);
+  border-color: color-mix(in srgb, var(--warn) 40%, transparent);
+  background: transparent;
+  box-shadow: none;
+}
+.btn--danger:hover {
+  background: var(--warn);
+  border-color: var(--warn);
+  color: #fff;
+}
+
+.btn--sm {
+  padding: 4px 10px;
+  font-size: var(--fs-sm);
+  border-radius: var(--r-pastille);
+}
+
+/* Petit bouton d'outil : rangée du composeur, actions de post. */
+.tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 8px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-pastille);
+  color: var(--ink-3);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  line-height: 1;
+  transition: background 0.13s ease, color 0.13s ease;
+}
+.tool:hover:not(:disabled) {
+  background: var(--surface-3);
+  color: var(--ink);
+}
+.tool:active:not(:disabled) {
+  transform: translateY(1px);
+}
+.tool:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* ---------------------------------------------------------------- formulaires
+   Libellé au-dessus, aide et erreur en dessous. Jamais de placeholder en guise
+   de libellé. Le focus est un halo bleu — « où tu es », comme partout. */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.field__label {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.field__input {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-control);
+  color: var(--ink);
+  padding: 9px 12px;
+  font-size: var(--fs-base);
+  outline: none;
+  transition: border-color 0.13s ease, box-shadow 0.13s ease;
+}
+.field__input::placeholder {
+  color: var(--ink-3);
+}
+.field__input:focus {
+  border-color: var(--link);
+  box-shadow: var(--ring);
+}
+.field__hint {
+  font-size: var(--fs-sm);
+  color: var(--ink-3);
+}
+.field__error {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--warn);
+}
+
+/* ------------------------------------------------------------------- guides
+   Le mini-guide replié, à côté d'un champ que personne ne peut remplir sans
+   savoir quoi y mettre (appairage d'un signeur, nom vérifié par un domaine).
+   Replié par défaut : qui sait déjà remplit sans lire. Sa numérotation dit un
+   ordre RÉEL — on ne peut pas faire l'étape 3 avant la 1 — et pas une décoration
+   en 01 / 02 / 03. Le placement reste à la charge de l'appelant. */
+.guide {
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-control);
+  background: var(--surface-2);
+}
+.guide__toggle {
+  padding: 7px 10px;
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--link);
+  cursor: pointer;
+  list-style: none;
+}
+.guide__toggle::-webkit-details-marker {
+  display: none;
+}
+.guide__toggle::before {
+  content: '▸ ';
+  color: var(--ink-4);
+}
+.guide[open] .guide__toggle::before {
+  content: '▾ ';
+}
+.guide__toggle:hover {
+  color: var(--link-hover);
+}
+
+.guide__steps {
+  margin: 0;
+  padding: 2px 10px 0;
+  list-style: none;
+}
+.guide__step {
+  display: flex;
+  gap: 9px;
+  padding: 6px 0;
+  border-top: 1px solid var(--line-soft);
+  font-size: var(--fs-md);
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+.guide__step strong {
+  color: var(--ink);
+}
+/* Le corps de l'étape doit pouvoir rétrécir : sans ça un bloc large — un fichier
+   à copier, une URI — élargit l'étape au lieu de défiler dans son propre cadre. */
+.guide__step > :last-child {
+  min-width: 0;
+}
+/* Le numéro est un repère de séquence, pas une puce décorative : chiffre mono
+   tabulaire, dans le carré de la charte. */
+.guide__num {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  border-radius: var(--r-pastille);
+  background: var(--surface-sunken);
+  color: var(--ink-3);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+.guide__end {
+  margin: 0;
+  padding: 8px 10px 10px;
+  border-top: 1px solid var(--line-soft);
+  font-size: var(--fs-sm);
+  line-height: 1.55;
+  color: var(--ink-3);
+}
+
+/* --------------------------------------------------------------------- tags
+   Étiquette en petites capitales. Aplat teinté sans bordure : à cette taille,
+   un cadre de 1 px autour de 9 px de texte fait une croûte. Toujours du texte,
+   jamais une icône devinée. */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 6px;
+  border-radius: var(--r-pastille);
+  background: var(--surface-3);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  line-height: 1.3;
+  color: var(--ink-3);
+}
+.tag--brand {
+  color: var(--brand-ink);
+  background: var(--brand-soft);
+}
+.tag--ok {
+  color: var(--ok);
+  background: var(--ok-soft);
+}
+.tag--warn {
+  color: var(--warn);
+  background: var(--warn-soft);
+}
+/* Équipe de modération. Bleu et non orange : c'est un fait d'identité, du même
+   ordre que le pseudo cliquable — l'orange est déjà « auteur du topic », et deux
+   pastilles orange côte à côte ne se distingueraient plus. */
+.tag--staff {
+  color: var(--link);
+  background: var(--link-soft);
+}
+
+/* ------------------------------------------------------------------ compteur
+ * Le nombre de messages d'un topic. Il portait AVANT toute la chaleur — puce
+ * pleine, halo, chevron — parce que rien d'autre ne pouvait la porter. Le rail
+ * s'en charge désormais, et bien mieux : le compteur redevient ce qu'il est,
+ * un nombre. Il ne garde de l'ancien système que la graduation d'encre, qui
+ * suffit à le hiérarchiser sans répéter l'alarme du rail.
+ */
+.count {
+  display: inline-block;
+  min-width: 26px;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  text-align: right;
+}
+.count--none {
+  font-weight: 400;
+  color: var(--ink-4);
+}
+.count--some {
+  color: var(--ink-3);
+}
+.count--warm {
+  color: var(--ink-2);
+}
+.count--hot {
+  color: var(--brand-ink);
+  font-weight: 700;
+}
+
+/* ------------------------------------------------------------- rail de chauffe
+ * LA SIGNATURE. Une capsule verticale à gauche de chaque rangée, dont le
+ * remplissage monte avec la vélocité du topic. C'est la donnée qui pilotait déjà
+ * l'intensité du compteur — elle passe simplement d'un chiffre à déchiffrer à
+ * une forme qui se lit sans être regardée.
+ *
+ * `--fill` (0 → 1) est posé en style inline par la rangée. Trois paliers, une
+ * seule teinte : éteint (rien ne bouge), tiède (orange plein), chaud (orange +
+ * halo + respiration). Un forum calme n'affiche donc aucune lumière, et c'est
+ * la bonne réponse — l'écran ne doit pas crier quand il n'y a rien à dire.
+ */
+.heat {
+  position: relative;
+  width: 3px;
+  border-radius: 999px;
+  background: var(--heat-track);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.heat::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: calc(var(--fill, 0) * 100%);
+  border-radius: 999px;
+  background: var(--brand);
+  transition: height 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+/* Éteint : la piste seule, à peine retenue. Elle reste lisible — un rail
+   invisible ne serait plus une jauge, juste un rail absent la moitié du temps. */
+.heat--cold {
+  opacity: 0.6;
+}
+.heat--hot {
+  box-shadow: var(--heat-glow);
+  animation: heat-breathe 2.6s ease-in-out infinite;
+}
+@keyframes heat-breathe {
+  50% {
+    opacity: 0.62;
+  }
+}
+
+/* ------------------------------------------------------------------- pilule
+ * Objet flottant hors flux. C'est le SEUL bouton orange de l'app, et il ne
+ * contredit pas la règle : il ne propose pas une action permanente, il annonce
+ * que quelque chose vient d'arriver (« +3 nouveaux »). Il n'existe que pendant
+ * qu'il y a de la nouveauté, et il disparaît avec elle — donc l'orange s'y
+ * éteint tout seul. Le pouls est son accusé de réception.
+ */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 16px;
+  border-radius: 999px;
+  background: var(--brand);
+  color: var(--brand-on);
+  font-size: var(--fs-md);
+  font-weight: 700;
+  border: none;
+  box-shadow: var(--shadow-pop);
+}
+.pill:hover {
+  background: var(--brand-strong);
+}
+.pill--pulse {
+  animation: pill-pulse 1.8s ease-in-out infinite;
+}
+@keyframes pill-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 92, 0, 0.5), var(--shadow-pop);
+  }
+  55% {
+    box-shadow: 0 0 0 9px rgba(255, 92, 0, 0), var(--shadow-pop);
+  }
+}
+
+/* ---------------------------------------------------------------- squelettes
+   Forme du contenu final, jamais un rond qui tourne. */
+.skeleton {
+  background: linear-gradient(90deg, var(--surface-2) 25%, var(--surface-3) 37%, var(--surface-2) 63%);
+  background-size: 400% 100%;
+  animation: skeleton-loading 1.5s ease infinite;
+  border-radius: var(--r-pastille);
+}
+@keyframes skeleton-loading {
+  0% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0 50%;
+  }
+}
+
+/* ------------------------------------------------------------------ divers */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Barres de défilement discrètes, accordées au thème. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

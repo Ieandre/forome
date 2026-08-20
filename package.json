@@ -1,0 +1,32 @@
+{
+  "name": "forome",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "npm run build -w @forome/nostr-client",
+    "test": "npm run test -w @forome/relay-policy && npm run test -w @forome/indexer && npm run test -w @forome/nostr-client",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "setup:moderation": "npx tsx scripts/setup-moderation.ts",
+    "dev:nostr": "npm run dev -w @forome/nostr-client",
+    "dev:relay": "npx tsx --env-file-if-exists=.env scripts/dev-relay.ts",
+    "dev:strfry": "bash scripts/dev-strfry.sh",
+    "dev:indexer": "npm run dev -w @forome/indexer",
+    "dev:bunker": "npx tsx scripts/dev-bunker.ts",
+    "seed:relay": "npx tsx scripts/seed-dev-relay.ts",
+    "smoke:policy": "npx tsx scripts/smoke-policy.ts",
+    "smoke:strfry": "npx tsx scripts/smoke-strfry.ts",
+    "smoke:dm": "npx tsx scripts/smoke-dm.ts",
+    "smoke:nip46": "npx tsx scripts/smoke-nip46.ts",
+    "smoke:moderation": "npx tsx scripts/smoke-moderation.ts",
+    "smoke:edit": "npx tsx scripts/smoke-edit.ts",
+    "check:relays": "npx tsx scripts/check-relays.ts"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

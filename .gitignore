@@ -1,0 +1,18 @@
+node_modules/
+dist/
+.output/
+.nuxt/
+.env
+*.local
+.DS_Store
+.idea/
+coverage/
+data/media/
+.playwright-mcp/
+# Carnet du miroir de stickers : un cache reconstructible, pas une source.
+# Le perdre ne coûte qu'un dépôt redondant (voir server/utils/stickerMirror.ts).
+.data/
+
+# Relais strfry compilé localement : source C++ + base de données.
+# Reconstructible (docs/strfry.md), jamais versionné.
+.strfry/

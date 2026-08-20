@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Forome">
+  <!-- Le F est tracé, pas composé : un favicon ne charge pas Bricolage Grotesque.
+       Les proportions suivent le wordmark de SiteHeader (extra-bold, fûts droits). -->
+  <style>
+    .bg { fill: #0d1117 }
+    .fg { fill: #e9edf4 }
+    .dot { fill: #ff6b21 }
+    /* La pastille doit trancher sur la barre d'onglets, pas s'y fondre : elle
+       prend donc le contraire du thème du navigateur, avec l'orange de la charte
+       correspondant au fond obtenu. */
+    @media (prefers-color-scheme: dark) {
+      .bg { fill: #eef1f6 }
+      .fg { fill: #0d1117 }
+      .dot { fill: #ff5c00 }
+    }
+  </style>
+  <rect class="bg" width="32" height="32" rx="7.5" />
+  <path class="fg" d="M7.2 7h13.4v4.5H7.2z M7.2 7h4.5v18H7.2z M7.2 13.9h10.6v4.3H7.2z" />
+  <circle class="dot" cx="23.2" cy="22.6" r="2.4" />
+</svg>

@@ -1,0 +1,76 @@
+##
+## Configuration strfry d'exemple pour Forome (spec v2 §12.2, §13).
+##
+## Modèle commenté pour un DÉPLOIEMENT. Pour le développement, la config
+## réellement exécutée est `strfry.conf` à côté (`npm run dev:strfry`), vérifiée
+## contre un vrai strfry — voir `docs/strfry.md`.
+##
+## Ce qui reste à décider ici et pas là-bas : l'adresse d'écoute (celle-ci
+## n'écoute que la boucle locale), l'identité NIP-11, et la persistance.
+##
+## Référence à jour : https://github.com/hoytech/strfry
+##
+
+db = "./strfry-db/"
+
+dbParams {
+    maxreaders = 256
+    # À dimensionner selon le disque. 10 Go tient largement un forum qui démarre.
+    mapsize = 10995116277760
+}
+
+relay {
+    bind = "127.0.0.1"
+    port = 7777
+
+    # NIP-11 — le document d'information du relais.
+    info {
+        name = "Forome"
+        description = "Relais du forum. Kinds 11/1111 avec preuve de travail, profils et listes."
+        pubkey = ""
+        contact = ""
+    }
+
+    maxWebsocketPayloadSize = 131072
+    autoPingSeconds = 55
+
+    # Bornes de requête : un client qui demande tout doit être borné côté relais,
+    # pas seulement côté client.
+    maxReqFilterSize = 200
+    maxFilterLimit = 500
+    maxSubsPerConnection = 20
+
+    writePolicy {
+        # LE point d'entrée de la policy. Le script garde stdout propre et
+        # maintient le suivi de débit en mémoire entre les events, ce qui exige
+        # que strfry garde le process vivant (c'est son comportement normal).
+        plugin = "/CHEMIN/ABSOLU/VERS/forome/packages/relay-policy/run-strfry.sh"
+    }
+
+    compression {
+        enabled = true
+        slidingWindow = true
+    }
+}
+
+##
+## Ce que la policy applique (voir packages/relay-policy/src/index.ts) :
+##
+##   - kinds acceptés : 0, 3, 11, 1111, 10000, 10002, 30078, 1059
+##   - périmètre : tag `t=forome` exigé sur les kinds 11 et 1111
+##   - PoW ≥ 14 bits sur 11, 1111 et 1059 ; aucune sur les profils et les listes
+##   - created_at dans [-1 h, +2 min] de l'horloge du relais
+##   - contenu ≤ 32 Kio, ≤ 200 tags
+##   - 30 events / 60 s par clé publique
+##
+## Ce que la policy NE fait PAS, et qu'il faudra décider :
+##
+##   - pas de NIP-42 (AUTH) : les quotas sont par clé mais rien ne prouve
+##     qu'une connexion appartient à cette clé. À ajouter si les quotas doivent
+##     tenir face à un adversaire.
+##   - pas de liste de blocage : le retrait dur reste un acte manuel
+##     (`strfry delete`), et il ne retire l'event que de CE relais (spec v2 §9.2).
+##   - pas de synchronisation : `strfry sync` avec negentropy est ce qui donne
+##     la réplication entre plusieurs relais à nous. À faire dès qu'il y en a
+##     plus d'un — un relais unique ridiculiserait la promesse d'incensurabilité.
+##

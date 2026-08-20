@@ -208,7 +208,9 @@ async function attachImages(files: File[]): Promise<void> {
   margin-bottom: 7px;
 }
 
-.pe__input {
+/* `:deep()` obligatoire : RichEditor est multi-racines, l'attribut de scope du
+   parent ne tombe pas sur le champ — sans ça, aucune de ces règles ne matche. */
+.pe :deep(.pe__input) {
   min-height: 68px;
   max-height: 320px;
   overflow-y: auto;
@@ -220,7 +222,7 @@ async function attachImages(files: File[]): Promise<void> {
   line-height: 1.55;
   color: var(--ink);
 }
-.pe__input:focus-within {
+.pe :deep(.pe__input:focus-within) {
   border-color: var(--link);
   box-shadow: var(--ring);
 }

@@ -31,9 +31,10 @@ usePageTitle('Mes appareils')
 const identity = useIdentityStore()
 
 /** `warn` seulement quand la perte est réellement possible : clé sur ce seul
-    navigateur, sans copie ailleurs. */
+    navigateur, sans copie ailleurs — et avec quelque chose dessus. Alerter sur
+    une identité jamais servie protégerait du vide. */
 const level = computed(() => {
-  if (identity.signerMode === 'local' && !identity.keySaved) return 'warn'
+  if (identity.signerMode === 'local' && !identity.keySaved && !identity.unusedIdentity) return 'warn'
   return 'ok'
 })
 
@@ -55,6 +56,8 @@ const risk = computed(() => {
     case 'nip07':
       return 'Pour écrire depuis un autre appareil, installes-y la même extension.'
     default:
+      if (identity.unusedIdentity)
+        return 'Identité toute neuve, jamais servie : rien à perdre pour l’instant.'
       return identity.keySaved
         ? 'Tu en as une copie ailleurs : vider ce navigateur ne te la fait pas perdre.'
         : 'Aucune copie ailleurs. Vider ce navigateur effacerait cette identité, et personne ne peut te la redonner.'

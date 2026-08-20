@@ -16,13 +16,13 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { generateSecretKey, getPublicKey, finalizeEvent } from 'nostr-tools/pure'
-import { nsecEncode, decode } from 'nostr-tools/nip19'
+import { nsecEncode } from 'nostr-tools/nip19'
 // Type seul : le module nip46 (et sa chaîne nip04/nip44) ne se charge qu'à la
 // connexion d'un bunker — `init()` tourne sur CHAQUE chargement de page, et la
 // quasi-totalité des sessions n'utilisent jamais de signeur distant.
 import type { BunkerSigner, BunkerPointer } from 'nostr-tools/nip46'
 import type { EventTemplate, VerifiedEvent } from 'nostr-tools/core'
-import { kheyHandle, keyDiscriminator } from '~/utils/nostr'
+import { kheyHandle, keyDiscriminator, decodeSecretInput } from '~/utils/nostr'
 
 const SK_KEY = 'forome.sk'
 const POSTS_KEY = 'forome.posts'
@@ -103,6 +103,16 @@ export const useIdentityStore = defineStore('identity', () => {
   /** Le nudge de sauvegarde n'arrive qu'après quelques posts, et jamais si la clé est déjà sauvée. */
   const shouldNudgeBackup = computed(
     () => signerMode.value === 'local' && !keySaved.value && postCount.value >= NUDGE_AFTER_POSTS,
+  )
+
+  /**
+   * Vrai tant que l'identité générée ici n'a jamais servi : aucun post, clé
+   * jamais sauvegardée, pas de signeur externe. La remplacer ne perd rien —
+   * c'est ce qui autorise à proposer « J'ai déjà un compte » et à taire les
+   * avertissements de remplacement, qui protégeraient du vide.
+   */
+  const unusedIdentity = computed(
+    () => signerMode.value === 'local' && postCount.value === 0 && !keySaved.value,
   )
 
   /**
@@ -411,39 +421,14 @@ export const useIdentityStore = defineStore('identity', () => {
    * sur une faute de frappe.
    */
   function importKey(input: string): { ok: true; pubkey: string } | { ok: false; error: string } {
-    const raw = input.trim()
-    if (!raw) return { ok: false, error: 'rien à importer' }
+    const res = decodeSecretInput(input)
+    if (!res.ok) return res
 
-    let bytes: Uint8Array | null = null
-    if (/^[0-9a-f]{64}$/i.test(raw)) {
-      bytes = unhex(raw.toLowerCase())
-    } else if (raw.startsWith('nsec')) {
-      try {
-        const decoded = decode(raw)
-        if (decoded.type === 'nsec') bytes = decoded.data
-      } catch {
-        return { ok: false, error: 'nsec illisible (somme de contrôle invalide ?)' }
-      }
-    } else if (raw.startsWith('npub')) {
-      return { ok: false, error: 'ceci est une clé PUBLIQUE (npub) — il faut la clé privée (nsec)' }
-    }
-
-    if (!bytes || bytes.length !== 32) {
-      return { ok: false, error: 'format non reconnu — attendu une nsec… ou 64 caractères hex' }
-    }
-
-    let pub: string
-    try {
-      pub = getPublicKey(bytes)
-    } catch {
-      return { ok: false, error: 'clé invalide sur la courbe secp256k1' }
-    }
-
-    secretKey.value = bytes
-    pubkey.value = pub
+    secretKey.value = res.secret
+    pubkey.value = res.pubkey
     signerMode.value = 'local'
     if (import.meta.client) {
-      localStorage.setItem(SK_KEY, hex(bytes))
+      localStorage.setItem(SK_KEY, hex(res.secret))
       localStorage.removeItem(SIGNER_KEY)
       // Une clé importée est par définition déjà sauvegardée ailleurs : ne pas
       // renudger. Le compteur de posts, lui, repart de ce qu'on sait sur CET
@@ -452,7 +437,7 @@ export const useIdentityStore = defineStore('identity', () => {
     }
     keySaved.value = true
     encartSeen.value = true
-    return { ok: true, pubkey: pub }
+    return { ok: true, pubkey: res.pubkey }
   }
 
   return {
@@ -467,6 +452,7 @@ export const useIdentityStore = defineStore('identity', () => {
     keySaved,
     encartSeen,
     shouldNudgeBackup,
+    unusedIdentity,
     bunkerConnecting,
     bunkerError,
     signerError,

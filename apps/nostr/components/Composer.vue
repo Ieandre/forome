@@ -453,7 +453,11 @@ function doneBackup(): void {
   flex-shrink: 0;
 }
 
-.composer__input {
+/* `:deep()` obligatoire : RichEditor a deux racines (le champ + le Teleport de
+   la poignée), donc l'attribut de scope du parent ne tombe pas sur le champ et
+   un sélecteur scopé ordinaire ne le matche jamais — le texte se collait au
+   bord, sans padding. */
+.composer__box :deep(.composer__input) {
   display: block;
   width: 100%;
   border: none;
@@ -461,7 +465,9 @@ function doneBackup(): void {
   font-size: var(--fs-lg);
   line-height: 1.6;
   outline: none;
-  min-height: 54px;
+  /* ~3 lignes visibles : une seule ligne fait un composeur écrasé, qui
+     n'invite pas à écrire plus d'une phrase. */
+  min-height: 88px;
 }
 
 /* 5px : les 8px de padding interne des boutons complètent la marge de 13px du

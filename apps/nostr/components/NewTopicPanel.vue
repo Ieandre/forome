@@ -426,7 +426,9 @@ async function submit(): Promise<void> {
   padding: 7px 6px;
   border-bottom: 1px solid var(--line);
 }
-.nt__input {
+/* `:deep()` obligatoire : RichEditor est multi-racines, l'attribut de scope du
+   parent ne tombe pas sur le champ — sans ça, aucune de ces règles ne matche. */
+.nt__editor :deep(.nt__input) {
   flex: 1;
   min-height: 0;
   overflow-y: auto;

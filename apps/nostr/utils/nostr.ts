@@ -1,7 +1,8 @@
 /**
  * Helpers Nostr purs — pas d'état, pas de réseau.
  */
-import { neventEncode, npubEncode } from 'nostr-tools/nip19'
+import { neventEncode, npubEncode, decode } from 'nostr-tools/nip19'
+import { getPublicKey } from 'nostr-tools/pure'
 import type { NostrEvent, TopicRow } from '~/types/nostr'
 import { KIND_THREAD } from '~/types/nostr'
 
@@ -95,6 +96,48 @@ export function kheyHandle(pubkey: string): string {
  */
 export function keyDiscriminator(pubkey: string): string {
   return pubkey.slice(0, 6)
+}
+
+/* ----------------------------------------------------------- clé privée */
+
+export type SecretInput = { ok: true; secret: Uint8Array; pubkey: string } | { ok: false; error: string }
+
+/**
+ * Décode une clé privée saisie à la main — `nsec…` (NIP-19) ou 64 hex.
+ *
+ * Pur et sans effet : sert aussi bien à l'import réel (store identité) qu'à la
+ * prévisualisation pendant la frappe (« tu redeviendras X »), qui ne doit
+ * surtout PAS toucher l'identité courante.
+ */
+export function decodeSecretInput(input: string): SecretInput {
+  const raw = input.trim()
+  if (!raw) return { ok: false, error: 'rien à importer' }
+
+  let bytes: Uint8Array | null = null
+  if (/^[0-9a-f]{64}$/i.test(raw)) {
+    const lower = raw.toLowerCase()
+    bytes = new Uint8Array(32)
+    for (let i = 0; i < 32; i++) bytes[i] = parseInt(lower.slice(i * 2, i * 2 + 2), 16)
+  } else if (raw.startsWith('nsec')) {
+    try {
+      const decoded = decode(raw)
+      if (decoded.type === 'nsec') bytes = decoded.data
+    } catch {
+      return { ok: false, error: 'nsec illisible (somme de contrôle invalide ?)' }
+    }
+  } else if (raw.startsWith('npub')) {
+    return { ok: false, error: 'ceci est une clé PUBLIQUE (npub) — il faut la clé privée (nsec)' }
+  }
+
+  if (!bytes || bytes.length !== 32) {
+    return { ok: false, error: 'format non reconnu — attendu une nsec… ou 64 caractères hex' }
+  }
+
+  try {
+    return { ok: true, secret: bytes, pubkey: getPublicKey(bytes) }
+  } catch {
+    return { ok: false, error: 'clé invalide sur la courbe secp256k1' }
+  }
 }
 
 /* ------------------------------------------------------------ identicon */

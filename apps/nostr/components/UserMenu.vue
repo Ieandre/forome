@@ -29,6 +29,19 @@
 
       <hr class="um__sep" />
 
+      <!-- La porte « je reviens », dans le vocabulaire de l'utilisateur — pas
+           « importer une clé ». Visible seulement tant que l'identité générée
+           ici n'a jamais servi : après un post ou une sauvegarde, celui qui est
+           là est probablement celui qu'il veut être. -->
+      <NuxtLink
+        v-if="identity.unusedIdentity"
+        to="/appareils"
+        class="um__item um__item--strong"
+        @click="open = false"
+      >
+        J'ai déjà un compte
+      </NuxtLink>
+
       <!-- Une seule entrée, pas deux : « Modifier » est un bouton de la page de
            profil, pas une destination concurrente dans le menu. Le pseudo ne se
            choisit plus ici — il se modifie sur la page, avec le reste (à propos,
@@ -235,6 +248,13 @@ function doNewKhey(): void {
   /* Les entrées de menu sont des lignes, pas des liens de texte : le
      soulignement au survol d'un `<a>` casserait l'alignement de la colonne. */
   text-decoration: none;
+}
+
+/* Encre pleine et graisse : tant qu'elle existe, c'est l'entrée que le
+   revenant cherche — mais pas bleue, ce n'est pas un marqueur d'équipe. */
+.um__item--strong {
+  color: var(--ink);
+  font-weight: 600;
 }
 
 /* Bleu comme les autres marqueurs d'équipe, et le compte de dossiers en attente

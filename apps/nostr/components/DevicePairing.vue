@@ -1,12 +1,14 @@
 <template>
-  <div class="pair">
+  <div class="pair" :class="{ 'pair--neuf': identity.unusedIdentity }">
     <!-- Trois actions à plat, pas trois onglets : ce ne sont pas trois vues d'un
          même objet mais trois conséquences distinctes (copier / remplacer /
          sortir la clé). Les cacher derrière des onglets obligeait à cliquer pour
          découvrir ce qui existe, et masquait la seule option qui protège
-         vraiment — le signeur distant. -->
+         vraiment — le signeur distant. L'ordre, lui, dépend d'où l'on se tient :
+         sur un appareil dont l'identité n'a jamais servi, on vient REPRENDRE un
+         compte, et cette carte passe en tête (`.pair--neuf`). -->
 
-    <section class="card">
+    <section class="card card--export">
       <div class="card__head">
         <h2 class="card__title">Ajouter un appareil</h2>
         <span class="card__lead">Ta clé part sur l'autre appareil, par QR ou par copie.</span>
@@ -31,8 +33,12 @@
           <QrCode :text="nsec" :size="200" />
           <div class="reveal__side">
             <p class="reveal__count mono">masqué dans {{ remaining }} s</p>
+            <!-- Décrire le VRAI parcours : il n'y a pas de scanner dans l'app,
+                 c'est l'appareil photo du téléphone qui lit le QR et donne le
+                 texte à copier. -->
             <p class="reveal__steps">
-              Sur l'autre appareil : ouvre Forome, puis « Importer une clé » sur cette même page.
+              Sur l'autre appareil : scanne ce code avec l'appareil photo, copie le texte obtenu,
+              puis colle-le dans « Reprendre mon compte » — cette même page, sur Forome.
             </p>
             <div class="card__actions">
               <button type="button" class="btn btn--sm" @click="hide">Masquer</button>
@@ -50,15 +56,20 @@
       </p>
     </section>
 
-    <section class="card">
+    <!-- « Reprendre mon compte », pas « Importer une clé » : la carte se nomme
+         par l'intention de celui qui la cherche, pas par le geste technique. -->
+    <section class="card card--import">
       <div class="card__head">
-        <h2 class="card__title">Importer une clé</h2>
+        <h2 class="card__title">Reprendre mon compte</h2>
         <span class="card__lead">
-          Reprends une identité créée ailleurs, en collant sa clé ou en scannant son QR.
+          Redeviens toi sur cet appareil, en collant la clé de ton identité.
         </span>
       </div>
 
-      <p class="card__warn card__warn--soft">
+      <!-- Prévenir du remplacement quand il n'y a rien à remplacer ferait peur
+           pour rien : l'avertissement n'existe que si l'identité courante a
+           servi ou est déjà sauvegardée quelque part. -->
+      <p v-if="!identity.unusedIdentity" class="card__warn card__warn--soft">
         <strong>{{ identity.displayName }} sera remplacé</strong> sur cet appareil. Sauvegarde cette
         identité d'abord si tu comptes y revenir.
       </p>
@@ -72,13 +83,35 @@
           spellcheck="false"
           placeholder="nsec1… ou 64 caractères hex"
         />
-        <button type="submit" class="btn" :disabled="!importDraft.trim()">Importer</button>
+        <button type="submit" class="btn" :disabled="!importDraft.trim()">Reprendre</button>
       </form>
-      <p v-if="importError" class="card__error">{{ importError }}</p>
-      <p v-else-if="importedAs" class="card__ok">Importé — tu es maintenant {{ importedAs }}.</p>
+
+      <!-- Le champ est masqué (regards par-dessus l'épaule), donc impossible de
+           relire ce qu'on a collé : l'identicon dérivé en direct rend la seule
+           vérification qui compte — c'est bien MOI que cette clé reconstruit. -->
+      <p v-if="peekPubkey" class="card__peek">
+        <IdenticonAvatar :pubkey="peekPubkey" :size="20" />
+        <span>
+          clé reconnue — tu redeviendras
+          <strong>{{ profiles.displayName(peekPubkey) }}</strong>
+          <span class="mono card__disc">·{{ keyDiscriminator(peekPubkey) }}</span>
+        </span>
+      </p>
+      <p v-else-if="importError" class="card__error">{{ importError }}</p>
+      <p v-else-if="peekIsNpub" class="card__error">
+        ceci est une clé PUBLIQUE (npub) — il faut la clé privée (nsec)
+      </p>
+      <div v-else-if="importedPubkey" class="card__done">
+        <IdenticonAvatar :pubkey="importedPubkey" :size="20" />
+        <p class="card__ok card__ok--flat">
+          Tu es de nouveau <strong>{{ profiles.displayName(importedPubkey) }}</strong>
+          <span class="mono card__disc">·{{ keyDiscriminator(importedPubkey) }}</span>
+        </p>
+        <NuxtLink to="/" class="btn btn--sm">Retour au forum</NuxtLink>
+      </div>
     </section>
 
-    <section class="card">
+    <section class="card card--bunker">
       <div class="card__head">
         <h2 class="card__title">Sortir la clé de cet appareil</h2>
         <span class="card__lead">
@@ -160,12 +193,13 @@
  * qui voyage** — d'où l'affichage temporisé du QR et l'avertissement sur chaque
  * carte plutôt qu'une fois en tête de page.
  */
-import { ref, computed, onUnmounted } from 'vue'
-import { kheyHandle } from '~/utils/nostr'
+import { ref, computed, watch, onUnmounted } from 'vue'
+import { keyDiscriminator, decodeSecretInput } from '~/utils/nostr'
 
 const HOLD_S = 30
 
 const identity = useIdentityStore()
+const profiles = useProfileStore()
 const devTools = useDevTools()
 
 const bunkerDraft = ref('')
@@ -174,7 +208,29 @@ const remaining = ref(HOLD_S)
 const copied = ref(false)
 const importDraft = ref('')
 const importError = ref<string | null>(null)
-const importedAs = ref<string | null>(null)
+const importedPubkey = ref<string | null>(null)
+
+/** Pubkey dérivée en direct de la saisie — sans toucher l'identité courante. */
+const peekPubkey = computed(() => {
+  const raw = importDraft.value.trim()
+  if (!raw) return null
+  const res = decodeSecretInput(raw)
+  return res.ok ? res.pubkey : null
+})
+/** L'erreur n°1 (coller sa npub) se détecte sans attendre le submit. */
+const peekIsNpub = computed(() => importDraft.value.trim().startsWith('npub'))
+
+/* Le pseudo kind-0, s'il existe, vaut mieux que le handle de repli pour se
+   reconnaître : on le demande dès que la clé se décode. */
+watch(peekPubkey, (pk) => {
+  if (pk) profiles.want(pk)
+})
+/* Reprendre la saisie invalide le résultat du coup d'avant, erreur comme
+   confirmation — sinon « tu es de nouveau X » reste affiché sous une clé Y. */
+watch(importDraft, (draft) => {
+  importError.value = null
+  if (draft.trim()) importedPubkey.value = null
+})
 
 let timer: ReturnType<typeof setInterval> | null = null
 
@@ -217,10 +273,11 @@ async function doConnect(): Promise<void> {
 
 function doImport(): void {
   importError.value = null
-  importedAs.value = null
+  importedPubkey.value = null
   const res = identity.importKey(importDraft.value)
   if (res.ok) {
-    importedAs.value = kheyHandle(res.pubkey)
+    importedPubkey.value = res.pubkey
+    void profiles.fetchOne(res.pubkey)
     importDraft.value = ''
   } else {
     importError.value = res.error
@@ -235,6 +292,13 @@ onUnmounted(hide)
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+/* Identité jamais servie = on est sur l'appareil NEUF : la carte de reprise
+   passe en tête, sinon la première chose vue est le QR de la clé jetable du
+   jour — exactement celle qu'il ne faut pas propager. */
+.pair--neuf .card--import {
+  order: -1;
 }
 
 /* Panneau de la charte : blanc bordé, en-tête sur le gris de surface. */
@@ -297,6 +361,34 @@ onUnmounted(hide)
 }
 .card__ok {
   color: var(--ok);
+}
+.card__ok--flat {
+  padding: 0;
+}
+
+.card__peek {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 0 13px 13px;
+  font-size: var(--fs-md);
+  color: var(--ink-2);
+}
+.card__peek strong {
+  color: var(--ink);
+}
+.card__disc {
+  font-size: var(--fs-xs);
+  color: var(--ink-4);
+}
+
+.card__done {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  padding: 0 13px 13px;
 }
 
 .card__actions {

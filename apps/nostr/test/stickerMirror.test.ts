@@ -181,7 +181,13 @@ describe('StickerMemo', () => {
   /* Un système de fichiers en lecture seule est une configuration valable : le
      forum doit continuer, pas s'arrêter. */
   it('survit à un chemin impossible à écrire', async () => {
-    const memo = new StickerMemo('/proc/interdit/stickers.json')
+    // Un fichier en guise de dossier parent : mkdir échoue tout de suite et
+    // partout pareil. Viser /proc ne marchait que sur macOS, où il n'existe
+    // pas — sous Linux la promesse ne revient jamais et le test expire.
+    const bouchon = join(dir, 'pas-un-dossier')
+    await writeFile(bouchon, 'x', 'utf8')
+
+    const memo = new StickerMemo(join(bouchon, 'stickers.json'))
     await memo.load()
     expect(memo.put(1, entry())).toBe(true)
     await expect(memo.flush()).resolves.toBeUndefined()

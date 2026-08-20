@@ -1,0 +1,17 @@
+[Unit]
+Description=Forome - relais strfry
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=ubuntu
+# HOME requis : run-strfry.sh passe par npx, qui lit le cache npm de l'usager.
+Environment=HOME=/home/ubuntu
+WorkingDirectory=/home/ubuntu/forome-data
+ExecStart=/usr/local/bin/strfry --config /home/ubuntu/forome/deploy/strfry.conf relay
+Restart=on-failure
+RestartSec=3
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,18 @@
+[Unit]
+Description=Forome - client (serveur Nitro)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=ubuntu
+Environment=HOME=/home/ubuntu
+Environment=NITRO_HOST=127.0.0.1
+Environment=NITRO_PORT=3000
+WorkingDirectory=/home/ubuntu/forome
+EnvironmentFile=/home/ubuntu/forome-data/web.env
+ExecStart=/usr/bin/node apps/nostr/.output/server/index.mjs
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

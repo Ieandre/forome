@@ -1,0 +1,17 @@
+# Caddy fait tout le TLS (certificat obtenu et renouvelé seul).
+# __HOST__ est remplacé par deploy/install.sh — ne pas éditer sur la VM,
+# la copie effective est /etc/caddy/Caddyfile.
+__HOST__ {
+	encode zstd gzip
+
+	# Le relais : wss://__HOST__/relay → strfry (WebSocket + NIP-11 en HTTP).
+	@relay path /relay /relay/
+	handle @relay {
+		reverse_proxy 127.0.0.1:7777
+	}
+
+	# Tout le reste : le serveur Nitro du client (pages, /api/img, /api/media…).
+	handle {
+		reverse_proxy 127.0.0.1:3000
+	}
+}

@@ -1,0 +1,18 @@
+[Unit]
+Description=Forome - indexeur (tick kind 30078)
+# Le tick doit viser NOTRE relais : RELAYS est posé dans indexer.env par
+# install.sh — sans ce fichier, le défaut du code vise les relais publics.
+After=forome-strfry.service
+Wants=forome-strfry.service
+
+[Service]
+User=ubuntu
+Environment=HOME=/home/ubuntu
+WorkingDirectory=/home/ubuntu/forome
+EnvironmentFile=/home/ubuntu/forome-data/indexer.env
+ExecStart=/usr/bin/npx --no-install tsx apps/indexer/src/index.ts
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

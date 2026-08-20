@@ -60,7 +60,9 @@ fi
 
 echo
 if [ "$fail" -eq 0 ]; then
-  echo "Santé OK — $(git -C "$ROOT" rev-parse --short HEAD) en place et répond."
+  # Le SHA est un agrément, pas un résultat : lancé hors du dépôt (par un pipe,
+  # par exemple), le script doit conclure quand même.
+  echo "Santé OK — $(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo 'commit inconnu,') en place et répond."
 else
   echo "Santé DÉGRADÉE — voir les lignes ÉCHEC ci-dessus."
   echo "Diagnostic : journalctl -u forome-web -u forome-strfry -u forome-indexer -n 50 --no-pager"

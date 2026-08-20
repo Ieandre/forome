@@ -1,6 +1,10 @@
 # Caddy fait tout le TLS (certificat obtenu et renouvelé seul).
 # __HOST__ est remplacé par deploy/install.sh — ne pas éditer sur la VM,
 # la copie effective est /etc/caddy/Caddyfile.
+www.__HOST__ {
+	redir https://__HOST__{uri} permanent
+}
+
 __HOST__ {
 	encode zstd gzip
 

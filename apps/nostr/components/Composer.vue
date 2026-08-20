@@ -629,4 +629,24 @@ function doneBackup(): void {
     display: none;
   }
 }
+
+/* ------------------------------------------------------------ écran COURT
+ * Le téléphone en paysage : 390 px de haut, dont 56 pour la barre. Le composeur
+ * y prenait 200 px à lui seul — il ne restait du fil qu'une bande de 50 px, et
+ * « Poster » tombait hors de l'écran. Une requête de LARGEUR ne voit rien de ce
+ * cas : l'écran fait 844 px de large, il est « grand ».
+ *
+ * Ce qui rend de la hauteur, c'est la zone de frappe : elle est généreuse pour
+ * inviter à écrire plus d'une phrase, et cette invitation ne vaut pas de cacher
+ * ce à quoi on répond. Elle grandit toute seule à la frappe.
+ */
+@media (max-height: 560px) {
+  .composer {
+    padding-top: 6px;
+    padding-bottom: 8px;
+  }
+  .composer__box :deep(.composer__input) {
+    min-height: 44px;
+  }
+}
 </style>

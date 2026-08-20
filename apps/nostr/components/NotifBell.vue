@@ -273,12 +273,22 @@ onBeforeUnmount(() => {
   color: var(--ink-4);
 }
 
-/* Sous 420 px, un panneau de 360 px déborderait du canevas : il se cale sur la
-   largeur disponible en gardant sa gouttière. */
-@media (max-width: 420px) {
+/* Sous 480 px, un panneau de 360 px ne tient plus sous la cloche : il prend
+   toute la largeur, gouttière comprise.
+
+   ⚠️ `fixed` et non `absolute` : ancré à droite de la cloche, un panneau large
+   de `100vw - 24px` sortait par la GAUCHE de l'écran (la cloche n'est pas au
+   bord droit, l'avatar est après elle). En `fixed`, les deux bords sont posés
+   sur le viewport et il ne peut plus dépasser d'aucun côté. Le décrochage
+   vertical se calcule alors depuis la barre, qui a une hauteur connue. */
+@media (max-width: 479px) {
   .bell__pop {
-    width: calc(100vw - 24px);
-    right: -8px;
+    position: fixed;
+    top: calc(var(--topbar-h) - 4px);
+    left: 12px;
+    right: 12px;
+    width: auto;
+    max-height: min(70vh, 520px);
   }
 }
 </style>

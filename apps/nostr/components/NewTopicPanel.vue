@@ -515,4 +515,15 @@ async function submit(): Promise<void> {
     flex-basis: 100%;
   }
 }
+
+/* Même raison que le composeur du fil (voir `Composer.vue`) : en paysage, le
+   champ à 220 px poussait « Publier le topic » sous le pli. */
+@media (max-height: 560px) {
+  .nt__editor {
+    min-height: 96px;
+  }
+  .nt__body > .nt__col {
+    padding-block: 12px;
+  }
+}
 </style>

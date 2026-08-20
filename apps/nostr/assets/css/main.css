@@ -62,6 +62,34 @@
  *   1 px est une exception qui se justifie (rangées d'un même registre), pas le
  *   mode de construction par défaut.
  *
+ * ── L'ÉCRAN A TROIS DIMENSIONS, PAS UNE ──────────────────────────────────────
+ * La largeur ne suffit pas à décrire un écran, et s'en tenir à elle a laissé
+ * passer les défauts les plus visibles du site au téléphone :
+ *
+ *   LARGEUR.  Les paliers vivent dans les composants, parce que le seuil dépend
+ *             de ce qu'ils portent. Deux sont structurels et communs :
+ *             **820 px**, où les vues à deux colonnes (`ForumShell`, `/dm`) se
+ *             remplacent au lieu de se partager, et **700 px**, où les panneaux
+ *             perdent gouttière, rayon et ombre pour prendre le plein cadre.
+ *             La barre de site en ajoute deux à elle (560, 400) : elle ne
+ *             rétrécit pas ses objets, elle en RETIRE — comprimer était
+ *             justement ce qui la cassait.
+ *   HAUTEUR.  `max-height: 560px` — le téléphone EN PAYSAGE. L'app tient dans
+ *             la fenêtre et fait défiler ses colonnes ; sur 342 px de haut, un
+ *             composeur calibré pour le bureau ne laissait du fil qu'une bande
+ *             de 50 px et poussait « Poster » hors de l'écran. Aucune requête de
+ *             largeur ne voit ce cas : l'écran fait 750 px de large, il est
+ *             « grand ».
+ *   POINTEUR. `pointer: coarse` — le doigt. Bloc dédié en bas de fichier : ce
+ *             n'est pas une taille d'écran mais deux limites de la plateforme
+ *             (le zoom iOS sous 16 px, le seuil du pouce), qu'une tablette large
+ *             a aussi et qu'une fenêtre étroite à la souris n'a pas.
+ *
+ * Et une contrainte qui n'est pas une dimension : `viewport-fit=cover`
+ * (`nuxt.config.ts`) donne le plein écran mais met l'encoche et la barre
+ * d'accueil à notre charge. Les `env(safe-area-inset-*)` sont donc posés là où
+ * un bord touche le cadre : la barre de site et la coque de `layouts/default`.
+ *
  * Pas de framework CSS : variables globales + BEM-like dans chaque composant.
  */
 
@@ -274,8 +302,15 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+/* L'app tient dans la fenêtre et fait défiler ses colonnes à l'intérieur : sa
+   hauteur doit donc être celle qu'on VOIT. Sur mobile, `100%` se résout sur le
+   grand viewport (barre d'URL rétractée) alors que la barre est presque toujours
+   là : le composeur, dernier enfant d'une colonne en `height: 100%`, tombait
+   sous le pli — et comme le défilement est interne, rien ne permettait d'aller
+   le chercher. `dvh` suit la barre ; le `100%` juste au-dessus reste le repli. */
 #__nuxt {
   height: 100%;
+  height: 100dvh;
 }
 
 /* Les chiffres qui se comparent d'une ligne à l'autre sont tabulaires, sinon
@@ -805,6 +840,50 @@ kbd {
 }
 *::-webkit-scrollbar-track {
   background: transparent;
+}
+
+/* --------------------------------------------------------------- le tactile
+ * Deux limites que nulle requête de LARGEUR ne corrige, parce qu'elles tiennent
+ * au doigt et non à l'écran — une tablette large les a aussi, une fenêtre
+ * étroite à la souris n'en a aucune. D'où `pointer: coarse`.
+ *
+ *   1. SOUS 16 PX, iOS Safari zoome la page à la mise au point d'un champ, et
+ *      n'en ressort pas au flou. La densité de la charte (13–15 px) déclenchait
+ *      donc ce zoom à chaque fois qu'on touchait le composeur : on écrivait son
+ *      premier message dans un forum devenu deux fois trop grand, décalé vers la
+ *      droite, sans moyen de revenir. C'est le défaut mobile le plus visible du
+ *      site et il ne se voit sur AUCUN émulateur de largeur.
+ *
+ *      `!important` — le seul de la feuille, et il se justifie : la règle doit
+ *      passer devant les corps posés dans les styles scopés des composants
+ *      (`.composer__input`, `.topic-list__search`…), qui gagnent en spécificité
+ *      par leur attribut de scope. La contrainte vient de la plateforme, pas
+ *      d'un goût : aucun composant n'a à pouvoir la contredire.
+ *      `max(16px, 1em)` et non `16px` : les champs déjà plus grands le restent.
+ *
+ *   2. LES COMMANDES CALIBRÉES POUR LE CURSEUR (26 px) sont sous le seuil du
+ *      pouce. On leur rend de la hauteur sans toucher au dessin : c'est la boîte
+ *      qui grandit, le corps du texte ne bouge pas.
+ */
+@media (pointer: coarse) {
+  input,
+  textarea,
+  select,
+  [contenteditable='true'] {
+    font-size: max(16px, 1em) !important;
+  }
+
+  .btn {
+    padding: 9px 14px;
+  }
+  .btn--sm {
+    min-height: 34px;
+    padding: 6px 12px;
+  }
+  .tool {
+    min-width: 34px;
+    height: 34px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

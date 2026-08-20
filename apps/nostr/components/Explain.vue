@@ -203,7 +203,10 @@ onBeforeUnmount(() => {
   position: fixed;
   z-index: 60;
   width: max-content;
-  max-width: 20rem;
+  /* Le recadrage de `useAnchoredLayer` colle le panneau au bord mais ne le
+     rétrécit pas : à 20 rem fixes il dépassait de l'autre côté sur un écran de
+     320 px. Les 16 px sont les deux gouttières du composable. */
+  max-width: min(20rem, calc(100vw - 16px));
   border: 1px solid var(--line-soft);
   border-radius: var(--r-panel);
   background: var(--surface);

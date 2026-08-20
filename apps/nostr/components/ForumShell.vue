@@ -302,7 +302,8 @@ async function copyPermalink(): Promise<void> {
 .topic-head__meta {
   display: flex;
   align-items: center;
-  gap: 10px;
+  flex-wrap: wrap;
+  gap: 2px 10px;
   margin-top: 3px;
 }
 .topic-head__by {
@@ -320,6 +321,9 @@ async function copyPermalink(): Promise<void> {
   display: inline-flex;
   align-items: center;
   gap: 10px;
+  /* Sans ça, « 4 msg » se coupait entre le chiffre et l'unité sur un téléphone :
+     la rangée repliait à l'intérieur du compteur au lieu d'entre les compteurs. */
+  white-space: nowrap;
   font-size: var(--fs-xs);
   color: var(--ink-3);
 }
@@ -503,6 +507,28 @@ async function copyPermalink(): Promise<void> {
     border: none;
     border-radius: 0;
     box-shadow: none;
+  }
+}
+
+/* ------------------------------------------------------------ écran COURT
+   Le téléphone en paysage. La tête rend ce qu'elle peut — 30 px — pour que le
+   fil garde une hauteur de lecture entre elle et le composeur. Le titre reste
+   au display : c'est ce qu'on est venu lire, il perd trois points, pas son
+   dessin. Voir la même règle dans `Composer.vue`. */
+@media (max-height: 560px) {
+  .topic-head {
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+  .topic-head__title {
+    font-size: 17px;
+  }
+  .topic-foot {
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+  .shell__welcome {
+    padding-block: 14px;
   }
 }
 </style>

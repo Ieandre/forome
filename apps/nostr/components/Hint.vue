@@ -70,9 +70,20 @@ function onEnter(): void {
   if (props.disabled) return
   timer = setTimeout(() => void show(), HOVER_DELAY)
 }
-function onFocusIn(): void {
+/**
+ * Le focus n'ouvre la bulle que s'il vient du CLAVIER.
+ *
+ * Au doigt, `focusin` part au premier contact : taper « thème » ou la flèche de
+ * retour posait une bulle noire par-dessus l'écran, qui y restait tant qu'on ne
+ * touchait pas ailleurs — le bouton avait gardé le focus. La bulle nomme une
+ * commande à qui la survole ou l'atteint à la tabulation ; au doigt, on vient de
+ * la toucher, elle n'a plus rien à nommer.
+ */
+function onFocusIn(e: FocusEvent): void {
   clear()
   if (props.disabled) return
+  const t = e.target
+  if (t instanceof HTMLElement && !t.matches(':focus-visible')) return
   void show()
 }
 function onLeave(): void {

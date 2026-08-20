@@ -1,41 +1,47 @@
 <template>
   <figure class="sk">
-    <svg class="sk__svg" viewBox="0 0 600 208" role="img" aria-labelledby="sk-t">
-      <title id="sk-t">
-        La clé privée donne la clé publique par un calcul instantané ; le calcul inverse est
-        inconnu.
-      </title>
+    <!-- Le schéma ne rétrécit pas indéfiniment : sous ~480 px ses libellés
+         tombent à 6 px et la figure ne dit plus rien. Elle garde donc sa
+         largeur minimale et défile ICI, dans son propre cadre — jamais la page,
+         qui doit rester lisible au pouce. La légende, elle, reste en place. -->
+    <div class="sk__scroll">
+      <svg class="sk__svg" viewBox="0 0 600 208" role="img" aria-labelledby="sk-t">
+        <title id="sk-t">
+          La clé privée donne la clé publique par un calcul instantané ; le calcul inverse est
+          inconnu.
+        </title>
 
-      <!-- Le secret. Encadré plein pour dire « objet à garder », le reste est vide. -->
-      <rect class="sk__box sk__box--secret" x="8" y="30" width="212" height="86" rx="12" />
-      <text class="sk__kind" x="26" y="56">CE QUE TU GARDES</text>
-      <text class="sk__val" x="26" y="82">nsec1…q7v4</text>
-      <text class="sk__note" x="26" y="103">32 octets tirés au hasard</text>
+        <!-- Le secret. Encadré plein pour dire « objet à garder », le reste est vide. -->
+        <rect class="sk__box sk__box--secret" x="8" y="30" width="212" height="86" rx="12" />
+        <text class="sk__kind" x="26" y="56">CE QUE TU GARDES</text>
+        <text class="sk__val" x="26" y="82">nsec1…q7v4</text>
+        <text class="sk__note" x="26" y="103">32 octets tirés au hasard</text>
 
-      <!-- L'aller : un calcul, gratuit, instantané. -->
-      <path class="sk__arrow" d="M232 66 h124" marker-end="url(#sk-head)" />
-      <text class="sk__label" x="294" y="52">une multiplication</text>
-      <text class="sk__label sk__label--dim" x="294" y="88">secp256k1</text>
+        <!-- L'aller : un calcul, gratuit, instantané. -->
+        <path class="sk__arrow" d="M232 66 h124" marker-end="url(#sk-head)" />
+        <text class="sk__label" x="294" y="52">une multiplication</text>
+        <text class="sk__label sk__label--dim" x="294" y="88">secp256k1</text>
 
-      <rect class="sk__box" x="368" y="30" width="224" height="86" rx="12" />
-      <text class="sk__kind" x="386" y="56">CE QUE TU MONTRES</text>
-      <text class="sk__val" x="386" y="82">npub1…8fha</text>
-      <text class="sk__note" x="386" y="103">ton identité, partout</text>
+        <rect class="sk__box" x="368" y="30" width="224" height="86" rx="12" />
+        <text class="sk__kind" x="386" y="56">CE QUE TU MONTRES</text>
+        <text class="sk__val" x="386" y="82">npub1…8fha</text>
+        <text class="sk__note" x="386" y="103">ton identité, partout</text>
 
-      <!-- Le retour : barré, parce que c'est là que tient tout le système. -->
-      <path class="sk__arrow sk__arrow--dead" d="M368 158 h-136" marker-end="url(#sk-head-dead)" />
-      <path class="sk__cross" d="M292 146 l16 24 M308 146 l-16 24" />
-      <text class="sk__label sk__label--dead" x="300" y="196">aucun chemin connu</text>
+        <!-- Le retour : barré, parce que c'est là que tient tout le système. -->
+        <path class="sk__arrow sk__arrow--dead" d="M368 158 h-136" marker-end="url(#sk-head-dead)" />
+        <path class="sk__cross" d="M292 146 l16 24 M308 146 l-16 24" />
+        <text class="sk__label sk__label--dead" x="300" y="196">aucun chemin connu</text>
 
-      <defs>
-        <marker id="sk-head" viewBox="0 0 10 8" refX="9" refY="4" markerWidth="8" markerHeight="7" orient="auto">
-          <path class="sk__head" d="M0 0 L10 4 L0 8 z" />
-        </marker>
-        <marker id="sk-head-dead" viewBox="0 0 10 8" refX="9" refY="4" markerWidth="8" markerHeight="7" orient="auto">
-          <path class="sk__head sk__head--dead" d="M0 0 L10 4 L0 8 z" />
-        </marker>
-      </defs>
-    </svg>
+        <defs>
+          <marker id="sk-head" viewBox="0 0 10 8" refX="9" refY="4" markerWidth="8" markerHeight="7" orient="auto">
+            <path class="sk__head" d="M0 0 L10 4 L0 8 z" />
+          </marker>
+          <marker id="sk-head-dead" viewBox="0 0 10 8" refX="9" refY="4" markerWidth="8" markerHeight="7" orient="auto">
+            <path class="sk__head sk__head--dead" d="M0 0 L10 4 L0 8 z" />
+          </marker>
+        </defs>
+      </svg>
+    </div>
 
     <figcaption class="sk__cap">
       Le sens unique est tout le système : on peut vérifier que tu as signé, on ne peut pas
@@ -56,10 +62,17 @@
 .sk {
   margin: 0;
 }
+.sk__scroll {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
 .sk__svg {
   display: block;
   width: 100%;
   height: auto;
+  /* Plancher de lisibilité : le viewBox fait 600 unités, donc en dessous de
+     480 px le texte du schéma passe sous ~8 px. */
+  min-width: 480px;
 }
 
 .sk__box {

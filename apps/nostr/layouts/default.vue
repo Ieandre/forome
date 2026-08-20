@@ -77,14 +77,20 @@ watch(
   flex: 1;
   min-height: 0;
   min-width: 0;
-  padding: 0 var(--gutter) var(--gutter);
+  padding: 0 calc(var(--gutter) + env(safe-area-inset-right, 0px)) calc(var(--gutter) + env(safe-area-inset-bottom, 0px))
+    calc(var(--gutter) + env(safe-area-inset-left, 0px));
 }
 
 /* Sous 700 px l'écran est trop étroit pour se payer une marge : les panneaux
-   reprennent le plein cadre. */
+   reprennent le plein cadre.
+   Les `env()` restent, eux : ils ne valent 0 que sur un écran rectangulaire, et
+   sans eux le pied du composeur passe sous la barre d'accueil de l'iPhone (le
+   bouton « Poster » y devient intouchable) et le fil sous l'encoche en paysage.
+   C'est `viewport-fit=cover` de `nuxt.config.ts` qui met ces bords à notre
+   charge — il donne le plein écran, il ne donne pas les marges avec. */
 @media (max-width: 700px) {
   .app__main {
-    padding: 0;
+    padding: 0 env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
   }
 }
 </style>

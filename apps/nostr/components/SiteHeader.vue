@@ -341,7 +341,10 @@ function toggleFirehose(): void {
   align-items: center;
   gap: 16px;
   height: var(--topbar-h);
-  padding: 0 calc(var(--gutter) + 6px);
+  /* `viewport-fit=cover` est posé dans `nuxt.config.ts` : sans ces marges, le
+     wordmark passe sous l'encoche dès qu'un téléphone est tenu en paysage. */
+  padding: 0 calc(var(--gutter) + 6px + env(safe-area-inset-right, 0px)) 0
+    calc(var(--gutter) + 6px + env(safe-area-inset-left, 0px));
 }
 
 /* Le nom est un seul mot : le point, et non une syllabe coupée, porte l'accent.
@@ -372,7 +375,12 @@ function toggleFirehose(): void {
   align-items: center;
   gap: 3px;
   padding: 3px;
-  min-width: 0;
+  /* ⚠️ Surtout pas `min-width: 0` : le segmenté se comprimait alors sous la
+     largeur de ses deux pastilles, et « Forum » passait SOUS l'indicateur de
+     relais — de 480 px vers le bas, sur toutes les routes qui portent le repli
+     « Nouveau topic ». Ce qui doit céder quand la barre est trop courte, c'est
+     le nombre d'objets qu'elle porte (plus bas), jamais leur largeur. */
+  flex-shrink: 0;
   background: var(--surface);
   border: 1px solid var(--line-soft);
   border-radius: 999px;
@@ -559,7 +567,8 @@ function toggleFirehose(): void {
   align-items: center;
   gap: 12px;
   height: var(--forumbar-h);
-  padding: 0 calc(var(--gutter) + 6px);
+  padding: 0 calc(var(--gutter) + 6px + env(safe-area-inset-right, 0px)) 0
+    calc(var(--gutter) + 6px + env(safe-area-inset-left, 0px));
 }
 
 .crumbs {
@@ -653,22 +662,67 @@ function toggleFirehose(): void {
 @media (max-width: 700px) {
   .topbar {
     gap: 10px;
-    padding: 0 12px;
+    padding: 0 calc(12px + env(safe-area-inset-right, 0px)) 0 calc(12px + env(safe-area-inset-left, 0px));
   }
   .navlink {
     padding: 6px 12px;
   }
-  /* Le libellé reste : sous 820 px avec un topic ouvert, ce bouton est le seul
-     accès à la publication, et un « + » nu n'annonce rien — ni à l'œil, ni au
-     lecteur d'écran. */
+  /* Le libellé reste : entre 560 et 820 px avec un topic ouvert, ce bouton est
+     le seul accès à la publication, et un « + » nu n'annonce rien — ni à l'œil,
+     ni au lecteur d'écran. */
   .topbar__new {
     padding: 6px 11px;
   }
   .forumbar {
-    padding: 0 12px;
+    padding: 0 calc(12px + env(safe-area-inset-right, 0px)) 0 calc(12px + env(safe-area-inset-left, 0px));
   }
   .forumbar__stat:not(:last-child) {
     display: none;
+  }
+}
+
+/* -------------------------------------------------------------- < 560 px ---
+ * Le téléphone. Sept objets ne tiennent pas sur 360 px de large, et les serrer
+ * est ce qui cassait la barre : on en RETIRE donc deux, en choisissant lesquels
+ * par ce qu'ils coûtent à qui les perd.
+ *
+ *   le thème  → descend dans le menu utilisateur. C'est une préférence, on la
+ *               règle une fois ; sa place permanente dans la barre est un luxe
+ *               de grand écran. (Le pendant est dans `UserMenu.vue`.)
+ *   « Nouveau topic » → part. Il n'est un repli que parce que la colonne de
+ *               topics n'est pas à l'écran, et sur téléphone elle est TOUJOURS à
+ *               un tap : l'onglet Forum, ou la flèche retour d'un topic ouvert.
+ *               Elle porte, elle, le vrai bouton primaire.
+ *
+ * Restent le wordmark, les deux lieux, l'état des relais, les notifications et
+ * l'identité — tout ce qui dit où l'on est et ce qui attend.
+ */
+@media (max-width: 559px) {
+  .topbar {
+    gap: 8px;
+  }
+  .topbar__right {
+    gap: 6px;
+  }
+  .topbar__theme {
+    display: none;
+  }
+  /* Après le bloc 820 px : à spécificité égale, c'est la dernière règle qui
+     gagne, donc `--off-wide` ne le rallume pas ici. */
+  .topbar__new {
+    display: none;
+  }
+}
+
+/* -------------------------------------------------------------- < 400 px ---
+   Les petits téléphones (SE, vieux Android). Le wordmark rend deux points de
+   corps et les pastilles leur padding — c'est tout ce qui manque pour tenir. */
+@media (max-width: 399px) {
+  .topbar__brand {
+    font-size: 19px;
+  }
+  .navlink {
+    padding: 6px 10px;
   }
 }
 </style>

@@ -184,5 +184,17 @@ const blockButtons: { kind: BlockKind; label: string; title: string }[] = [
   text-decoration: line-through;
 }
 
-
+/* Au doigt, la barre est le premier objet qu'on touche en écrivant : 26 px de
+   haut y sont un pari. On rend la boîte, pas le corps du texte — le dessin de
+   la barre est le même, ses cibles font 34 px. */
+@media (pointer: coarse) {
+  .mtb {
+    gap: 10px;
+  }
+  .mtb__btn {
+    min-width: 30px;
+    min-height: 34px;
+    padding: 4px 9px;
+  }
+}
 </style>

@@ -1340,5 +1340,48 @@ async function copyPermalink(): Promise<void> {
   .msg__author {
     max-width: 14ch;
   }
+  /*
+   * La barre d'auteur passe sur deux lignes.
+   *
+   * « Le 15 août 2026 à 22:19:26 » fait 158 px et ne se coupe pas — c'est
+   * voulu : dans un registre où rien ne s'efface, l'heure exacte EST
+   * l'information, elle ne se résume pas en « il y a 3 j ». Mais pseudo +
+   * heure + nº demandent 440 px, et sur un téléphone la rangée débordait de sa
+   * carte : le fil devenait défilable latéralement et les messages étaient
+   * coupés à droite.
+   *
+   * L'espaceur porte déjà `flex: 1` : il suffit de l'autoriser à passer à la
+   * ligne pour que le pseudo garde la première et que l'heure et le nº se
+   * posent sous lui, toujours calés à droite. Rien n'est retiré, rien n'est
+   * abrégé.
+   */
+  .msg__bar {
+    flex-wrap: wrap;
+    row-gap: 2px;
+  }
+  /* L'espaceur cède la place à une marge automatique portée par l'heure : il
+     tiendrait la première ligne et l'heure repassée dessous serait calée à
+     GAUCHE. Avec la marge, le groupe reste à droite qu'il ait replié ou non —
+     donc la rangée ne se coupe en deux que quand elle en a besoin. */
+  .msg__bar-spacer {
+    display: none;
+  }
+  .msg__time {
+    margin-left: auto;
+  }
+}
+
+/* Au doigt : « Citer », « Signaler » et « suivre » sont côte à côte à 2 px
+   d'écart et hauts de 21 px — on en visait un et on en touchait un autre.
+   La hauteur de la puce et l'écart augmentent ; le texte, lui, ne bouge pas,
+   donc le mur de bruit que ces actions devaient éviter ne revient pas. */
+@media (pointer: coarse) {
+  .msg__actions {
+    gap: 4px;
+  }
+  .msg__act {
+    min-height: 32px;
+    padding: 3px 10px;
+  }
 }
 </style>

@@ -62,6 +62,13 @@
         Comment ça marche
       </NuxtLink>
 
+      <!-- Le même interrupteur que celui de la barre, qui disparaît sous 560 px
+           (voir `SiteHeader.vue`). Il n'est donc jamais offert deux fois : la
+           requête média ci-dessous est l'exacte complémentaire de la sienne. -->
+      <button type="button" class="um__item um__item--theme" @click="theme.toggle()">
+        {{ theme.isDark.value ? 'Thème clair' : 'Thème sombre' }}
+      </button>
+
       <!-- L'entrée n'apparaît que si la clé est au roster signé du forum : ce
            n'est pas une case à cocher, c'est une propriété vérifiée. -->
       <NuxtLink v-if="mod.amStaff" to="/admin" class="um__item um__item--staff" @click="open = false">
@@ -115,6 +122,7 @@ import { npubFor } from '~/utils/nostr'
 const identity = useIdentityStore()
 const profiles = useProfileStore()
 const mod = useModerationStore()
+const theme = useTheme()
 
 const open = ref(false)
 const confirming = ref(false)
@@ -248,6 +256,16 @@ function doNewKhey(): void {
   /* Les entrées de menu sont des lignes, pas des liens de texte : le
      soulignement au survol d'un `<a>` casserait l'alignement de la colonne. */
   text-decoration: none;
+}
+
+/* Le thème n'a sa place ici que quand la barre ne le porte plus. */
+.um__item--theme {
+  display: none;
+}
+@media (max-width: 559px) {
+  .um__item--theme {
+    display: block;
+  }
 }
 
 /* Encre pleine et graisse : tant qu'elle existe, c'est l'entrée que le

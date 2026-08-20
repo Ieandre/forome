@@ -66,7 +66,10 @@ npm run build
 echo "=== Services systemd ==="
 sudo cp "$ROOT"/deploy/systemd/*.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now forome-strfry forome-indexer forome-web
+# enable --now ne redémarre pas un service déjà actif : sans restart, une
+# relance d'install.sh (ex. changement d'hôte) laisserait l'ancien build servi.
+sudo systemctl enable forome-strfry forome-indexer forome-web
+sudo systemctl restart forome-strfry forome-indexer forome-web
 
 echo "=== Caddy ==="
 sed "s|__HOST__|$HOST|g" "$ROOT/deploy/Caddyfile" | sudo tee /etc/caddy/Caddyfile >/dev/null

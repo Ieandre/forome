@@ -1,0 +1,164 @@
+name: CI
+
+# Vérification et déploiement vivent dans le même fichier, et pas côte à côte,
+# pour qu'un déploiement ne puisse pas partir sans que les vérifications aient
+# tourné sur EXACTEMENT le commit déployé.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "SHA à déployer (vide = HEAD de la branche choisie). Sert aussi au retour arrière."
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+# Sur main les déploiements font la queue au lieu de se marcher dessus :
+# update.sh enchaîne npm ci, build et restart des services — deux en parallèle
+# laisseraient un build à moitié écrit derrière eux.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  verifier:
+    name: Vérification
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Tests
+        run: npm test
+
+      # La policy est la seule barrière du système et un test unitaire ne voit
+      # pas le protocole de plugin. Ce smoke le parle par un pipe réel, sans
+      # strfry compilé — donc jouable sur un runner nu.
+      - name: Smoke de la policy
+        run: npm run smoke:policy
+
+      # Ne produit aucun artefact déployable : avec ssr:false les NUXT_PUBLIC_*
+      # sont cuits dans le HTML au build, et ils vivent sur la VM. Ce build
+      # prouve seulement qu'il passe ; c'est la VM qui rebuild avec sa config.
+      - name: Build
+        run: npm run build
+
+  deployer:
+    name: Déploiement
+    needs: verifier
+    # Jamais depuis une branche : lancé à la main sur autre chose que main, ce
+    # workflow ne fait que vérifier. Le retour arrière passe par l'entrée `ref`,
+    # pas par un déploiement de branche.
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Environnement GitHub : donne l'historique des déploiements, et permet
+    # d'exiger une approbation manuelle sans toucher à ce fichier.
+    environment: production
+    steps:
+      - name: Résoudre le commit à déployer
+        id: cible
+        env:
+          DEMANDE: ${{ inputs.ref }}
+          DEFAUT: ${{ github.sha }}
+        run: |
+          SHA="${DEMANDE:-$DEFAUT}"
+          # La valeur part dans une commande ssh distante : tout ce qui n'est
+          # pas un SHA hexadécimal n'a rien à y faire.
+          if ! printf '%s' "$SHA" | grep -Eq '^[0-9a-f]{7,40}$'; then
+            echo "::error::« $SHA » n'est pas un SHA hexadécimal (7 à 40 caractères)."
+            exit 1
+          fi
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Ouvrir l'accès SSH
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          LOGIN: ${{ vars.DEPLOY_USER || 'ubuntu' }}
+        run: |
+          manque=""
+          [ -n "$HOST" ] || manque="$manque DEPLOY_HOST"
+          [ -n "$KEY" ] || manque="$manque DEPLOY_SSH_KEY"
+          [ -n "$KNOWN_HOSTS" ] || manque="$manque DEPLOY_KNOWN_HOSTS"
+          if [ -n "$manque" ]; then
+            echo "::error::Secrets manquants :$manque — voir docs/deploiement.md, « Brancher le déploiement »."
+            exit 1
+          fi
+
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts && chmod 600 ~/.ssh/known_hosts
+          # StrictHostKeyChecking yes, donc empreinte épinglée obligatoire :
+          # sans elle, un DNS détourné suffirait à faire livrer la clé de
+          # déploiement — et l'accès à la VM — au premier qui répond.
+          cat > ~/.ssh/config <<EOF
+          Host vm
+            HostName $HOST
+            User $LOGIN
+            IdentityFile ~/.ssh/deploy_key
+            IdentitiesOnly yes
+            StrictHostKeyChecking yes
+            ConnectTimeout 20
+            ServerAliveInterval 30
+          EOF
+          chmod 600 ~/.ssh/config
+
+      - name: Relever le commit en place
+        id: avant
+        run: |
+          if ! ssh -o BatchMode=yes vm true; then
+            echo "::error::Connexion SSH refusée. Clé publique autorisée sur la VM ? Empreinte à jour dans DEPLOY_KNOWN_HOSTS ? Port 22 ouvert côté Oracle ?"
+            exit 1
+          fi
+          # Sert au message de retour arrière, et prouve au passage que la VM a
+          # bien été mise en service — sans quoi update.sh échouerait plus loin,
+          # et pour une raison moins lisible.
+          if ! avant="$(ssh vm 'git -C ~/forome rev-parse HEAD')"; then
+            echo "::error::Pas de dépôt dans ~/forome sur la VM : la première mise en service (deploy/install.sh) n'a jamais été faite. Voir docs/deploiement.md."
+            exit 1
+          fi
+          echo "sha=$avant" >> "$GITHUB_OUTPUT"
+
+      - name: Déployer
+        env:
+          SHA: ${{ steps.cible.outputs.sha }}
+        run: ssh vm "cd ~/forome && bash deploy/update.sh '$SHA'"
+
+      # update.sh a déjà passé deploy/healthcheck.sh sur la VM. Ce qu'il ne peut
+      # pas voir de là-bas : que le site est joignable depuis l'extérieur (DNS,
+      # liste de sécurité Oracle, pare-feu). D'où ce dernier appel, d'ici.
+      - name: Joignable depuis l'extérieur
+        run: |
+          SITE="$(ssh vm "sed -n 's/^NUXT_PUBLIC_SITE_URL=//p' ~/forome-data/web.env")"
+          if [ -z "$SITE" ]; then
+            echo "::error::NUXT_PUBLIC_SITE_URL absent de ~/forome-data/web.env sur la VM (install.sh jamais passé ?)."
+            exit 1
+          fi
+          echo "Test de $SITE depuis le runner."
+          curl -fsS -m 25 --retry 3 --retry-delay 5 -o /dev/null -w '  HTTP %{http_code} en %{time_total}s\n' "$SITE/"
+
+      - name: Comment revenir en arrière
+        if: failure() && steps.avant.outputs.sha != ''
+        env:
+          AVANT: ${{ steps.avant.outputs.sha }}
+        run: |
+          echo "::error::Déploiement en échec — la VM tourne peut-être sur un build cassé."
+          echo "Pour remettre le commit précédent ($AVANT) :"
+          echo "  · relancer ce workflow (Run workflow) avec ref = $AVANT"
+          echo "  · ou, en direct : ssh <vm> \"cd ~/forome && bash deploy/update.sh $AVANT\""

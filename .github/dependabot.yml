@@ -1,0 +1,8 @@
+version: 2
+updates:
+  # Les actions sont épinglées à une majeure : sans ce suivi, la chaîne d'outils
+  # qui a le droit de se connecter à la VM vieillirait sans que personne le voie.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

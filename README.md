@@ -29,6 +29,9 @@ npm test               # policy, indexeur, client
 npm run typecheck
 ```
 
+Ces trois-là, plus `smoke:policy`, tournent sur chaque pull request ; un push sur
+`main` qui les passe est déployé tout seul ([`docs/deploiement.md`](docs/deploiement.md)).
+
 ## Le dépôt
 
 | | |
@@ -68,6 +71,7 @@ session). Voir [`apps/nostr/utils/relayTargets.ts`](apps/nostr/utils/relayTarget
 | [`projet-forum-specification.md`](projet-forum-specification.md) | **la spec** — la direction. Conception, décisions négatives, zones ouvertes, roadmap V1→V4 |
 | [`docs/moderation-staff.md`](docs/moderation-staff.md) | **modération outillée** : équipe, pouvoirs, panneau d'administration. Complète le §9 de la spec, qui s'arrête aux contrôles côté lecteur |
 | [`docs/strfry.md`](docs/strfry.md) | **le relais** : compiler strfry (dont le patch Apple Clang), le lancer, le vérifier ; qui lit où et qui écrit où, et pourquoi |
+| [`docs/deploiement.md`](docs/deploiement.md) | **la mise en production** : le pipeline CI/CD, les secrets à brancher, la santé d'un déploiement, le retour arrière |
 | [`docs/seo.md`](docs/seo.md) | ce qu'un moteur de recherche voit d'une SPA branchée sur des relais, et le dispositif `<head>` + sitemap qui répare ça sans SSR |
 | [`docs/migration-nostr.md`](docs/migration-nostr.md) | document d'époque : l'inventaire du code v1 au moment du portage, ce qui a survécu, ce qui a été jeté |
 

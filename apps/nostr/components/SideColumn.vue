@@ -218,12 +218,17 @@ const relaysList = computed(() => {
   overflow: hidden;
 }
 
+/* Le filet sépare deux natures : au-dessus le chrome du site (qui je suis, ce
+   qui me réclame, comment je règle l'app), en dessous le contenu de la colonne
+   et de quoi le parcourir. Sans lui les deux rangées se lisaient comme une
+   seule barre de six objets hétéroclites. */
 .col__top {
   display: flex;
   align-items: center;
   gap: 4px;
   flex-shrink: 0;
   padding: 10px 12px 10px 14px;
+  border-bottom: 1px solid var(--line-soft);
 }
 .col__spacer {
   flex: 1;

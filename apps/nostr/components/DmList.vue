@@ -93,7 +93,6 @@
       <p v-if="peerError" class="dm__open-err">{{ peerError }}</p>
     </template>
   </div>
-  </div>
 </template>
 
 <script setup lang="ts">

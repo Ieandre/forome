@@ -1,104 +1,11 @@
 <template>
   <div class="chrome">
-    <header class="topbar">
-      <NuxtLink to="/" class="topbar__brand" @click="goThreads">
-        <!-- Le nom est un seul mot : c'est le point, et non une syllabe coupée, qui
-             porte l'accent de marque. -->
-        <span class="topbar__brand-a">Forome</span><span class="topbar__brand-b">.</span>
-      </NuxtLink>
-
-      <!-- Deux entrées, et ce sont deux LIEUX. Les notifications n'en sont pas
-           un — on ne les lit pas, on les dispatche — donc elles vivent dans un
-           panneau ancré à droite et non dans cette nav. Le test de débit n'est
-           pas un lieu non plus : c'est un outil, sous `?dev=1`. -->
-      <nav class="topbar__nav" aria-label="sections">
-        <button type="button" class="navlink" :class="{ 'navlink--on': onForum }" @click="goThreads">
-          Forum
-        </button>
-        <NuxtLink to="/dm" class="navlink" :class="{ 'navlink--on': route.path === '/dm' }">
-          MP<span v-if="dms.unreadCount" class="navlink__badge mono">{{ dms.unreadCount }}</span>
-        </NuxtLink>
-      </nav>
-
-      <div class="topbar__right">
-        <!-- Un rapport, pas un compte : « 4 relais » cachait combien on en
-             visait. Sur un client décentralisé, le dénominateur est ce qui
-             explique une liste à moitié vide ou un message refusé. -->
-        <Explain term="relais" :body="relaysBody" :items="relaysList" placement="bottom">
-          <span
-            class="relays"
-            :class="{
-              'relays--off': !relays.connected,
-              'relays--dev': relays.overridden,
-              'relays--degraded': relaysDegraded,
-            }"
-          >
-            <span class="relays__dot" />
-            <span class="relays__label mono">{{ relaysLabel }}</span>
-          </span>
-        </Explain>
-
-        <NotifBell />
-
-        <Hint
-          :text="theme.isDark.value ? 'passer en thème clair' : 'passer en thème sombre'"
-          placement="bottom"
-        >
-          <!-- L'icône montre la DESTINATION, pas l'état courant — comme le faisait
-               le libellé qu'elle remplace, et comme le dit la bulle au survol.
-               Le nom accessible est posé par `Hint` : ne pas ajouter d'aria-label
-               ici, il figerait le nom sur la première valeur. -->
-          <button type="button" class="topbar__theme" @click="theme.toggle()">
-            <svg
-              v-if="theme.isDark.value"
-              class="topbar__theme-icon"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.7"
-              stroke-linecap="round"
-              aria-hidden="true"
-            >
-              <circle cx="12" cy="12" r="4.4" />
-              <path
-                d="M12 2.6v1.9M12 19.5v1.9M2.6 12h1.9M19.5 12h1.9M4.36 4.36l1.34 1.34M18.3 18.3l1.34 1.34M4.36 19.64l1.34-1.34M18.3 5.7l1.34-1.34"
-              />
-            </svg>
-            <svg
-              v-else
-              class="topbar__theme-icon"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.7"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M20.7 13.1A8.4 8.4 0 1 1 10.9 3.3a6.6 6.6 0 0 0 9.8 9.8Z" />
-            </svg>
-          </button>
-        </Hint>
-
-        <!-- REPLI, pas doublon : le vrai bouton est le primaire orange en tête de
-             la colonne de topics. Celui-ci ne paraît que quand cette colonne
-             n'est pas à l'écran (voir les deux modificateurs). -->
-        <NuxtLink
-          to="/new"
-          class="topbar__new"
-          :class="{ 'topbar__new--off': listAlwaysUp, 'topbar__new--off-wide': listUpWhenWide }"
-        >
-          Nouveau topic
-        </NuxtLink>
-
-        <UserMenu />
-      </div>
-    </header>
-
-    <!-- Absente sur le forum : le fil d'Ariane y pointerait sur la page courante et
-         répéterait l'onglet actif. Sur `/new` et les profils il est le seul repère de
-         position, puisqu'aucun onglet ne s'y allume. -->
-    <div v-if="showForumbar" class="forumbar">
+    <!-- Le fil d'Ariane ne survit QUE là où la colonne est masquée, c'est-à-dire
+         sous 820 px : elle porte la marque, les onglets et le retour, donc
+         au-dessus il répéterait un chemin déjà à l'écran — et il le répéterait
+         dans une bande pleine largeur, celle qu'on vient justement de retirer.
+         En dessous il redevient le seul retour de la page ouverte. -->
+    <div v-if="showForumbar" class="forumbar" :class="{ 'forumbar--crumbs': !devTools }">
       <nav v-if="!onForum && crumbHere" class="crumbs" aria-label="fil d'Ariane">
         <NuxtLink to="/" class="crumbs__link" @click="goThreads">Forum</NuxtLink>
         <span class="crumbs__sep" aria-hidden="true">›</span>
@@ -295,7 +202,6 @@ const relaysList = computed(() => {
 // `null` plutôt qu'un repli : une route sans branche ici n'a pas de nom à
 // afficher, et en inventer un donnerait un fil d'Ariane faux plutôt qu'absent.
 const crumbHere = computed<string | null>(() => {
-  if (route.path === '/dm') return 'Messages privés'
   if (route.path === '/new') return 'Nouveau topic'
   if (route.path === '/appareils') return 'Mes appareils'
   if (route.path === '/comment-ca-marche') return 'Comment ça marche'
@@ -326,6 +232,7 @@ function toggleFirehose(): void {
 </script>
 
 <style scoped>
+
 .chrome {
   flex-shrink: 0;
   position: relative;
@@ -723,6 +630,13 @@ function toggleFirehose(): void {
   }
   .navlink {
     padding: 6px 10px;
+  }
+}
+/* Voir le commentaire du template : redondant avec la colonne dès qu'elle est
+   visible, seul retour en dessous. Le seuil est celui du layout. */
+@media (min-width: 821px) {
+  .forumbar--crumbs {
+    display: none;
   }
 }
 </style>

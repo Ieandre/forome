@@ -240,22 +240,36 @@ deux étages, reconstruit une couche au-dessus du protocole. Il s'adresse aux
 utilisateurs avancés ; **NIP-07** (extension navigateur) est l'échappatoire
 desktop, plus simple et déjà répandue.
 
+L'autorisation se demande par QR, pas par copie : le client affiche une
+invitation `nostrconnect://` (clé publique de client + jeton à usage unique) et
+c'est **le signeur qui scanne**. Rien de secret ni d'irréversible ne transite,
+et coller une adresse `bunker://` à la main reste le repli.
+
 ### 3.3 Multi-appareil : le QR
 
-Décision retenue : **export/import de la clé par QR code.** Sur l'ordi, « Lier
-un appareil » affiche un QR contenant la `nsec` (NIP-19) ; sur le téléphone, on
-scanne. Pattern WhatsApp Web inversé, connu de tout le monde, zéro concept
-nouveau à apprendre, une journée de dev — c'est ce qui couvre 95 % des cas.
+Décision retenue : **export/import de la clé par QR code.** Sur l'ordi, « Ajouter
+un appareil » affiche un QR ; sur le téléphone, on scanne. Pattern WhatsApp Web
+inversé, connu de tout le monde, zéro concept nouveau à apprendre — c'est ce qui
+couvre 95 % des cas.
+
+Ce que porte le QR est un **lien vers `/appareils`, la clé dans le fragment**, et
+pas la `nsec` nue : un appareil photo sait ouvrir un lien, il ne sait rien faire
+d'un `nsec1…` sinon le donner à recopier. Forome s'ouvre, reconnaît l'identité,
+la montre et attend une confirmation. Le fragment ne part jamais dans la requête
+HTTP ; il est retiré de l'URL avant même l'hydratation. Son prix, lui, est réel :
+il passe par l'historique du navigateur et par l'app photo, là où la clé nue ne
+tenait que dans un presse-papier. Le QR de la clé nue reste donc accessible, pour
+les apps signeur qui savent le lire.
 
 Bonus structurel : comme le profil, les follows et les MP vivent sur les
 relais, **il n'y a rien d'autre à synchroniser**. Un seul secret de 32 octets
 voyage, et tout l'univers de l'utilisateur réapparaît.
 
-À écrire dans l'interface, sans jargon : **un QR qui contient une `nsec` est un
+À écrire dans l'interface, sans jargon : **un QR qui mène à une `nsec` est un
 secret au porteur.** Quiconque le photographie devient l'utilisateur, pour
-toujours. Donc : affichage à la demande, plein écran, avec un compte à rebours
-d'expiration de l'affichage, jamais dans une capture partageable par accident,
-et un avertissement en une phrase.
+toujours. Donc : affichage à la demande, avec un compte à rebours d'expiration de
+l'affichage, jamais dans une capture partageable par accident, et un
+avertissement en une phrase.
 
 ### 3.4 Échelle de récupération
 

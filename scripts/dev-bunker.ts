@@ -117,7 +117,11 @@ function handle(req: RpcRequest, clientPk: string): void {
     case 'connect': {
       // params[0] = pubkey visé, params[1] = secret
       const given = req.params[1]
-      if (secret && given !== secret) {
+      // Un client DÉJÀ autorisé se reconnecte sans jeton, et c'est normal : le
+      // jeton d'un `bunker://` sert une fois, celui d'un `nostrconnect://` aussi.
+      // Ce qui autorise ensuite, c'est la clé cliente — la redemander rendrait
+      // toute reprise de session impossible, y compris au client de ce dépôt.
+      if (!authorized.has(clientPk) && secret && given !== secret) {
         refusedCount++
         console.log(`  ⊘ ${short} · connect REFUSÉ (mauvais secret)`)
         respond(clientPk, { id: req.id, error: 'secret invalide' })
@@ -217,6 +221,46 @@ function handle(req: RpcRequest, clientPk: string): void {
   }
 }
 
+/**
+ * L'autre sens de l'appairage (`nostrconnect://`), celui où **le signeur
+ * scanne**.
+ *
+ * Le client publie une invitation contenant sa clé publique et un jeton ; le
+ * signeur la lit et renvoie ce jeton tel quel, dans un event **non sollicité** —
+ * il n'y a pas de requête à laquelle répondre, donc pas d'`id` à reprendre.
+ * C'est ce renvoi qui prouve au client que l'autorisation vient bien de qui a lu
+ * son QR. Sans ce chemin ici, la moitié de l'appairage du client resterait non
+ * testée.
+ */
+function scan(uri: string): void {
+  let parsed: URL
+  try {
+    parsed = new URL(uri)
+  } catch {
+    console.log('  ⊘ invitation illisible')
+    return
+  }
+  const clientPk = parsed.hostname.toLowerCase()
+  const given = parsed.searchParams.get('secret')
+  if (!/^[0-9a-f]{64}$/.test(clientPk) || !given) {
+    console.log('  ⊘ invitation incomplète — attendu nostrconnect://<clé>?relay=…&secret=…')
+    return
+  }
+  const relays = parsed.searchParams.getAll('relay')
+  if (!relays.includes(RELAY)) {
+    // Un vrai signeur répondrait sur les relais de l'invitation. Ici on ne parle
+    // qu'à `RELAY` : le dire vaut mieux qu'un silence qu'on prendrait pour un bug
+    // du client.
+    console.log(`  ⚠ l'invitation ne cite pas ${RELAY} (${relays.join(', ') || 'aucun relais'}) — réponse envoyée quand même`)
+  }
+  authorized.add(clientPk)
+  revoked.delete(clientPk)
+  console.log(
+    `  ✓ ${clientPk.slice(0, 8)} · invitation acceptée · perms ${parsed.searchParams.get('perms') ?? 'non précisées'}`,
+  )
+  respond(clientPk, { id: 'nostrconnect', result: given })
+}
+
 function onEvent(ev: Event): void {
   const clientPk = ev.pubkey
   try {
@@ -245,7 +289,10 @@ console.log('')
 console.log('  Pour conserver la clé utilisateur entre deux runs :')
 console.log(`  BUNKER_USER_NSEC=${nsecEncode(userSk)}`)
 console.log('')
-console.log('  Commandes sur stdin : revoke | restore | status | quit')
+console.log("  Ou, sans rien coller dans le client : « Connecter par QR » y affiche une")
+console.log('  invitation, et `scan <nostrconnect://…>` ici la fait accepter.')
+console.log('')
+console.log('  Commandes sur stdin : scan <uri> | revoke | restore | status | quit')
 console.log('')
 
 pool.subscribe(RELAY ? [RELAY] : [], { kinds: [KIND_NOSTR_CONNECT], '#p': [bunkerPk] }, { onevent: onEvent })
@@ -266,6 +313,8 @@ rl.on('line', (line) => {
     for (const pk of revoked) authorized.add(pk)
     revoked.clear()
     console.log(`  ✓ ${authorized.size} client(s) réautorisé(s)`)
+  } else if (cmd.startsWith('scan ')) {
+    scan(cmd.slice(5).trim())
   } else if (cmd === 'status') {
     console.log(
       `  autorisés ${authorized.size} · révoqués ${revoked.size} · signés ${signedCount} · refusés ${refusedCount}`,

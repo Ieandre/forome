@@ -36,6 +36,21 @@ const BUNKER_URI_KEY = 'forome.bunker.uri'
 /** Nombre de posts avant le nudge de sauvegarde — « après quelques posts, pas au premier ». */
 export const NUDGE_AFTER_POSTS = 3
 
+/**
+ * Ce qu'on demande au signeur distant, kind par kind.
+ *
+ * Énumérer plutôt que laisser vide : un signeur qui ne sait pas d'avance ce
+ * qu'on va lui demander redemande à chaque signature, et poster devient une
+ * file de notifications à valider. Tout kind oublié ici marchera quand même —
+ * au prix d'une demande de plus.
+ */
+const CONNECT_PERMS = [
+  'get_public_key',
+  'nip44_encrypt',
+  'nip44_decrypt',
+  ...[0, 1, 3, 11, 13, 1059, 1111, 1984, 10000, 22242, 24242, 30078].map((k) => `sign_event:${k}`),
+]
+
 export type SignerMode = 'local' | 'nip07' | 'nip46'
 
 /** Interface minimale d'une extension NIP-07. */
@@ -69,8 +84,16 @@ export const useIdentityStore = defineStore('identity', () => {
    * demandé, et doit donc se lire là où il regarde son identité.
    */
   const signerError = ref<string | null>(null)
+  /**
+   * Invitation `nostrconnect://` en cours d'affichage, sinon null.
+   *
+   * Dans le state parce que c'est ce que le QR montre, et que sa disparition
+   * *est* le signal que l'appairage a abouti ou a été annulé.
+   */
+  const connectUri = ref<string | null>(null)
   /** hors du state réactif : objet à connexion vive, pas une donnée */
   let bunker: BunkerSigner | null = null
+  let connectAbort: AbortController | null = null
   /**
    * L'encart du premier post a déjà eu sa réponse. Persisté : il pose une
    * question qu'on ne repose pas. En mémoire seule, chaque rechargement de page
@@ -243,7 +266,7 @@ export const useIdentityStore = defineStore('identity', () => {
    * que le bunker peut retirer : la clé d'un côté, une autorisation révocable de
    * l'autre.
    *
-   * Ce qui voyage et ce qui ne voyage pas : la `clientSk` ci-dessous est une clé
+   * Ce qui voyage et ce qui ne voyage pas : `bunkerClientSecret()` rend une clé
    * locale qui ne sert **qu'à parler au bunker**. Elle n'est pas l'identité, et
    * la compromettre ne donne pas la clé de l'utilisateur — seulement une
    * autorisation révocable.
@@ -252,6 +275,9 @@ export const useIdentityStore = defineStore('identity', () => {
     if (!import.meta.client) return { ok: false, error: 'client uniquement' }
     const trimmed = input.trim()
     if (!trimmed) return { ok: false, error: 'aucune URI' }
+    // Deux chemins vers le même signeur : celui qu'on abandonne se referme, pour
+    // ne pas laisser un abonnement relais tourner derrière.
+    cancelNostrConnect()
 
     const { BunkerSigner, parseBunkerInput } = await import('nostr-tools/nip46')
     let pointer: BunkerPointer | null
@@ -264,44 +290,128 @@ export const useIdentityStore = defineStore('identity', () => {
       return { ok: false, error: 'URI non reconnue — attendu bunker://… ou un identifiant NIP-05' }
     }
 
-    // La clé cliente est persistée : sans ça, chaque rechargement créerait une
-    // nouvelle identité de client, que le bunker devrait réautoriser à la main.
-    let clientSk: Uint8Array
-    const stored = localStorage.getItem(BUNKER_CLIENT_SK)
-    if (stored && /^[0-9a-f]{64}$/.test(stored)) {
-      clientSk = unhex(stored)
-    } else {
-      clientSk = generateSecretKey()
-      localStorage.setItem(BUNKER_CLIENT_SK, hex(clientSk))
-    }
-
     bunkerConnecting.value = true
     bunkerError.value = null
     try {
-      const signer = BunkerSigner.fromBunker(clientSk, pointer)
+      const signer = BunkerSigner.fromBunker(bunkerClientSecret(), pointer)
       await signer.connect()
-      const remotePubkey = await signer.getPublicKey()
-      if (!/^[0-9a-f]{64}$/.test(remotePubkey)) {
-        throw new Error('le bunker a renvoyé une clé publique invalide')
-      }
-
-      bunker = signer
-      pubkey.value = remotePubkey
-      secretKey.value = null
-      signerMode.value = 'nip46'
-      localStorage.setItem(SIGNER_KEY, 'nip46')
-      localStorage.setItem(BUNKER_URI_KEY, trimmed)
-      // Une identité pilotée par bunker n'a rien à sauvegarder ici : la clé
-      // n'est pas sur cet appareil.
-      keySaved.value = true
-      markEncartSeen()
-      return { ok: true, pubkey: remotePubkey }
+      return { ok: true, pubkey: await adoptBunker(signer, trimmed) }
     } catch (err) {
       bunkerError.value = err instanceof Error ? err.message : String(err)
       return { ok: false, error: bunkerError.value }
     } finally {
       bunkerConnecting.value = false
     }
+  }
+
+  /**
+   * Clé locale de dialogue avec le signeur, persistée.
+   *
+   * Sans persistance, chaque rechargement créerait une nouvelle identité de
+   * client que le signeur devrait réautoriser à la main. Ce n'est PAS
+   * l'identité : la compromettre ne donne pas la clé de l'utilisateur,
+   * seulement une autorisation révocable.
+   */
+  function bunkerClientSecret(): Uint8Array {
+    const stored = localStorage.getItem(BUNKER_CLIENT_SK)
+    if (stored && /^[0-9a-f]{64}$/.test(stored)) return unhex(stored)
+    const fresh = generateSecretKey()
+    localStorage.setItem(BUNKER_CLIENT_SK, hex(fresh))
+    return fresh
+  }
+
+  /**
+   * Passage effectif sous signeur distant — commun aux deux sens d'appairage.
+   *
+   * L'URI mémorisée est toujours une `bunker://` : c'est la seule forme que
+   * `restoreBunker()` sait rejouer au démarrage. Une `nostrconnect://`, elle,
+   * ne vaut que pour l'appairage qui vient de se produire.
+   */
+  async function adoptBunker(signer: BunkerSigner, bunkerUri: string): Promise<string> {
+    const remotePubkey = await signer.getPublicKey()
+    if (!/^[0-9a-f]{64}$/.test(remotePubkey)) {
+      throw new Error('le signeur a renvoyé une clé publique invalide')
+    }
+    bunker = signer
+    pubkey.value = remotePubkey
+    secretKey.value = null
+    signerMode.value = 'nip46'
+    localStorage.setItem(SIGNER_KEY, 'nip46')
+    localStorage.setItem(BUNKER_URI_KEY, bunkerUri)
+    // Une identité pilotée par signeur n'a rien à sauvegarder ici : la clé
+    // n'est pas sur cet appareil.
+    keySaved.value = true
+    markEncartSeen()
+    return remotePubkey
+  }
+
+  /**
+   * Appairage inversé (`nostrconnect://`) : même résultat que `connectBunker`,
+   * geste inverse.
+   *
+   * C'est **nous** qui publions l'invitation, et l'app signeur qui vient la
+   * chercher. Deux conséquences, et ce sont les seules raisons de préférer ce
+   * chemin : il n'y a plus rien à recopier, et ce QR-ci **ne contient aucun
+   * secret durable** — une clé publique de client et un jeton à usage unique,
+   * inutiles à qui les photographie sans détenir la clé. À l'inverse du QR de
+   * la `nsec`, le montrer n'est pas irréversible.
+   */
+  async function startNostrConnect(): Promise<{ ok: true; pubkey: string } | { ok: false; error: string }> {
+    if (!import.meta.client) return { ok: false, error: 'client uniquement' }
+    if (connectUri.value) return { ok: false, error: 'appairage déjà en cours' }
+
+    // Les cibles d'écriture, pas de nouveaux relais : en développement elles se
+    // réduisent au relais local, et l'appairage ne sort pas de la machine comme
+    // le reste (`utils/relayTargets.ts`). Trois suffisent — le signeur imposera
+    // ensuite les siens (`switchRelays`).
+    const relays = useRelayStore().writeRelays().slice(0, 3)
+    if (relays.length === 0) return { ok: false, error: 'aucun relais pour l’appairage' }
+
+    const { BunkerSigner, createNostrConnectURI, toBunkerURL } = await import('nostr-tools/nip46')
+    const clientSk = bunkerClientSecret()
+    // Jeton à usage unique : le signeur doit le renvoyer tel quel. C'est ce qui
+    // prouve que l'autorisation vient de qui a lu CE QR, et pas d'un tiers qui
+    // aurait répondu à sa place.
+    const secret = hex(generateSecretKey()).slice(0, 32)
+    const uri = createNostrConnectURI({
+      clientPubkey: getPublicKey(clientSk),
+      relays,
+      secret,
+      perms: CONNECT_PERMS,
+      name: 'Forome',
+      url: window.location.origin,
+    })
+
+    // L'attente n'est pas `bunkerConnecting` : elle peut durer le temps
+    // d'installer une app, et ce qui la dit à l'écran c'est le QR lui-même.
+    // Marquer « connexion en cours » désactiverait le champ `bunker://` — le
+    // repli qu'on veut justement laisser ouvert.
+    const abort = new AbortController()
+    connectAbort = abort
+    connectUri.value = uri
+    bunkerError.value = null
+    try {
+      const signer = await BunkerSigner.fromURI(clientSk, uri, {}, abort.signal)
+      // L'URI mémorisée **perd le jeton** : il était à usage unique, et le
+      // rejouer au prochain démarrage ferait refuser la reconnexion par un
+      // signeur qui le vérifie. Ce qui autorise, ensuite, c'est la clé cliente.
+      const bunkerUri = toBunkerURL({ ...signer.bp, secret: null })
+      return { ok: true, pubkey: await adoptBunker(signer, bunkerUri) }
+    } catch (err) {
+      // Une annulation n'est pas une panne : elle ne laisse pas de message
+      // d'erreur derrière elle.
+      if (abort.signal.aborted) return { ok: false, error: 'appairage annulé' }
+      bunkerError.value = err instanceof Error ? err.message : String(err)
+      return { ok: false, error: bunkerError.value }
+    } finally {
+      connectUri.value = null
+      connectAbort = null
+    }
+  }
+
+  /** Referme l'invitation en cours — sinon l'abonnement reste ouvert. */
+  function cancelNostrConnect(): void {
+    connectAbort?.abort()
   }
 
   /** Reconnexion silencieuse au démarrage, si une session bunker existait. */
@@ -467,10 +577,13 @@ export const useIdentityStore = defineStore('identity', () => {
     bunkerConnecting,
     bunkerError,
     signerError,
+    connectUri,
     init,
     useExtension,
     useLocalKey,
     connectBunker,
+    startNostrConnect,
+    cancelNostrConnect,
     disconnectBunker,
     newKhey,
     sign,

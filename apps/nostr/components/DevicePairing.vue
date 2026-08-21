@@ -1,5 +1,5 @@
 <template>
-  <div class="pair" :class="{ 'pair--neuf': identity.unusedIdentity }">
+  <div class="pair" :class="{ 'pair--neuf': identity.unusedIdentity, 'pair--recu': arrivedByQr }">
     <!-- Trois actions à plat, pas trois onglets : ce ne sont pas trois vues d'un
          même objet mais trois conséquences distinctes (copier / remplacer /
          sortir la clé). Les cacher derrière des onglets obligeait à cliquer pour
@@ -30,15 +30,20 @@
         </div>
 
         <div v-else class="reveal">
-          <QrCode :text="nsec" :size="200" />
+          <QrCode :text="qrText" :size="200" />
           <div class="reveal__side">
             <p class="reveal__count mono">masqué dans {{ remaining }} s</p>
-            <!-- Décrire le VRAI parcours : il n'y a pas de scanner dans l'app,
-                 c'est l'appareil photo du téléphone qui lit le QR et donne le
-                 texte à copier. -->
-            <p class="reveal__steps">
-              Sur l'autre appareil : scanne ce code avec l'appareil photo, copie le texte obtenu,
-              puis colle-le dans « Reprendre mon compte » — cette même page, sur Forome.
+            <!-- Le QR porte un LIEN vers cette page, clé dans le fragment : un
+                 appareil photo n'a alors rien à faire recopier, il ouvre Forome
+                 qui propose la reprise. Le fragment ne part pas dans la requête
+                 HTTP — c'est ce qui rend le lien acceptable. -->
+            <p v-if="qrMode === 'link'" class="reveal__steps">
+              Sur l'autre appareil : scanne ce code avec l'appareil photo et ouvre le lien. Forome
+              s'ouvre sur cette page et te propose de redevenir toi — rien à recopier.
+            </p>
+            <p v-else class="reveal__steps">
+              La clé nue, sans lien autour : ce QR-là est pour une app signeur qui sait le lire.
+              Un appareil photo n'en tirera qu'un texte à copier.
             </p>
             <div class="card__actions">
               <button type="button" class="btn btn--sm" @click="hide">Masquer</button>
@@ -46,6 +51,9 @@
                 {{ copied ? 'copié ✓' : 'Copier ma clé' }}
               </button>
             </div>
+            <button type="button" class="reveal__swap" @click="swapQr">
+              {{ qrMode === 'link' ? 'QR de la clé nue, pour une app signeur' : 'QR de reprise, pour un appareil photo' }}
+            </button>
           </div>
         </div>
       </template>
@@ -65,6 +73,13 @@
           Redeviens toi sur cet appareil, en collant la clé de ton identité.
         </span>
       </div>
+
+      <!-- Arrivée par le QR : la clé est déjà dans le champ, il ne reste que la
+           vérification. On n'importe PAS tout seul — un lien ouvert par erreur
+           ne doit pas remplacer une identité. -->
+      <p v-if="arrivedByQr" class="card__got">
+        Clé reçue par le QR. Vérifie ci-dessous que c'est bien toi, puis confirme.
+      </p>
 
       <!-- Prévenir du remplacement quand il n'y a rien à remplacer ferait peur
            pour rien : l'avertissement n'existe que si l'identité courante a
@@ -134,8 +149,42 @@
           l'autorisation, sans changer d'identité.
         </p>
 
+        <!-- Ici c'est le signeur qui scanne, et c'est tout l'intérêt : ce QR ne
+             contient rien de secret et rien d'irréversible, à l'inverse de
+             celui de la clé. L'invitation reste ouverte jusqu'à l'annulation. -->
+        <div v-if="identity.connectUri" class="reveal">
+          <QrCode :text="identity.connectUri" :size="200" />
+          <div class="reveal__side">
+            <p class="reveal__count mono">en attente de ton app signeur…</p>
+            <p class="reveal__steps">
+              Scanne ce code depuis ton app signeur : elle demandera d'autoriser Forome. Ta clé ne
+              bouge pas de là — et tu pourras retirer l'autorisation sans changer d'identité.
+            </p>
+            <div class="card__actions">
+              <button type="button" class="btn btn--sm" @click="identity.cancelNostrConnect()">
+                Annuler
+              </button>
+              <!-- Signeur sur CE téléphone : on ne peut pas scanner son propre
+                   écran, l'invitation se colle alors dans l'app. -->
+              <button type="button" class="btn btn--sm" @click="copyInvite">
+                {{ inviteCopied ? 'copié ✓' : 'Copier l’invitation' }}
+              </button>
+            </div>
+          </div>
+        </div>
+        <div v-else class="card__actions">
+          <button
+            type="button"
+            class="btn btn--primary"
+            :disabled="identity.bunkerConnecting"
+            @click="doNostrConnect"
+          >
+            Connecter par QR
+          </button>
+        </div>
+
         <!-- Replié : qui a déjà son URI la colle sans lire. La numérotation dit
-             un ordre réel — on ne peut pas coller une URI avant d'avoir l'app. -->
+             un ordre réel — on ne peut pas autoriser avant d'avoir l'app. -->
         <details class="guide">
           <summary class="guide__toggle">Je n'ai pas encore d'app signeur</summary>
           <ol class="guide__steps">
@@ -156,8 +205,9 @@
             <li class="guide__step">
               <span class="guide__num mono">3</span>
               <span>
-                <strong>Colle l'adresse de connexion.</strong> L'app en affiche une qui commence par
-                <code>bunker://</code> — c'est elle qui va dans le champ ci-dessous.
+                <strong>Reviens ici et scanne.</strong> « Connecter par QR » affiche l'invitation que
+                ton app doit lire. Si elle ne sait pas scanner, elle donne une adresse
+                <code>bunker://</code> — le champ ci-dessous l'accepte aussi.
               </span>
             </li>
           </ol>
@@ -193,10 +243,15 @@
  * qui voyage** — d'où l'affichage temporisé du QR et l'avertissement sur chaque
  * carte plutôt qu'une fois en tête de page.
  */
-import { ref, computed, watch, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { keyDiscriminator, decodeSecretInput } from '~/utils/nostr'
 
 const HOLD_S = 30
+/**
+ * Le fragment que porte le QR de reprise. À garder en phase avec le script de
+ * tête de `nuxt.config.ts`, qui le vide de l'URL avant que cette page existe.
+ */
+const KEY_HASH = '#k='
 
 const identity = useIdentityStore()
 const profiles = useProfileStore()
@@ -209,6 +264,10 @@ const copied = ref(false)
 const importDraft = ref('')
 const importError = ref<string | null>(null)
 const importedPubkey = ref<string | null>(null)
+const arrivedByQr = ref(false)
+const inviteCopied = ref(false)
+/** `link` = QR vers cette page ; `key` = clé nue, pour une app signeur. */
+const qrMode = ref<'link' | 'key'>('link')
 
 /** Pubkey dérivée en direct de la saisie — sans toucher l'identité courante. */
 const peekPubkey = computed(() => {
@@ -236,6 +295,26 @@ let timer: ReturnType<typeof setInterval> | null = null
 
 /** null quand la clé vit dans une extension : rien à exporter. */
 const nsec = computed(() => identity.exportNsec())
+
+/**
+ * Le QR par défaut est un **lien vers cette page**, clé dans le fragment.
+ *
+ * C'est ce qui supprime le copier-coller : l'appareil photo sait ouvrir un
+ * lien, il ne sait rien faire d'un `nsec1…`. Le fragment ne part jamais dans la
+ * requête HTTP — mais il passe par l'historique du navigateur et par l'app
+ * photo, là où la clé nue restait dans une seule presse-papier. C'est le prix,
+ * et c'est pourquoi `swapQr()` existe.
+ */
+const qrText = computed(() => {
+  if (!nsec.value) return ''
+  if (qrMode.value === 'key') return nsec.value
+  const origin = import.meta.client ? window.location.origin : ''
+  return `${origin}/appareils${KEY_HASH}${nsec.value}`
+})
+
+function swapQr(): void {
+  qrMode.value = qrMode.value === 'link' ? 'key' : 'link'
+}
 
 /** L'expiration ne protège de rien contre quelqu'un de présent — elle évite
     l'oubli, qui est le cas réel. */
@@ -271,12 +350,31 @@ async function doConnect(): Promise<void> {
   if (res.ok) bunkerDraft.value = ''
 }
 
+function doNostrConnect(): void {
+  void identity.startNostrConnect()
+}
+
+async function copyInvite(): Promise<void> {
+  const uri = identity.connectUri
+  if (!uri) return
+  try {
+    await navigator.clipboard.writeText(uri)
+    inviteCopied.value = true
+    setTimeout(() => (inviteCopied.value = false), 1500)
+  } catch {
+    /* presse-papier indisponible — le QR reste la porte d'entrée */
+  }
+}
+
 function doImport(): void {
   importError.value = null
   importedPubkey.value = null
   const res = identity.importKey(importDraft.value)
   if (res.ok) {
     importedPubkey.value = res.pubkey
+    // La clé du QR a servi : ce qui reste à l'écran est un résultat, plus une
+    // vérification à faire.
+    arrivedByQr.value = false
     void profiles.fetchOne(res.pubkey)
     importDraft.value = ''
   } else {
@@ -284,7 +382,34 @@ function doImport(): void {
   }
 }
 
-onUnmounted(hide)
+/**
+ * Reprise arrivée par le QR.
+ *
+ * Le script de tête (`nuxt.config.ts`) a déjà sorti la clé de l'URL ; on la
+ * ramasse et on l'oublie du global. Le repli par le fragment sert au cas où ce
+ * script n'a pas tourné — le résultat compte plus que le chemin pris.
+ *
+ * Rien n'est importé sans un geste : un lien ouvert par erreur ne doit pas
+ * remplacer une identité.
+ */
+onMounted(() => {
+  const holder = window as unknown as { __foromeKey?: string }
+  const fromHash = window.location.hash.startsWith(KEY_HASH)
+    ? decodeURIComponent(window.location.hash.slice(KEY_HASH.length))
+    : ''
+  const raw = (holder.__foromeKey ?? fromHash).trim()
+  delete holder.__foromeKey
+  if (fromHash) history.replaceState(null, '', window.location.pathname + window.location.search)
+  if (!raw || !decodeSecretInput(raw).ok) return
+  importDraft.value = raw
+  arrivedByQr.value = true
+})
+
+onUnmounted(() => {
+  hide()
+  // Une invitation laissée derrière soi garde un abonnement relais ouvert.
+  identity.cancelNostrConnect()
+})
 </script>
 
 <style scoped>
@@ -296,8 +421,11 @@ onUnmounted(hide)
 
 /* Identité jamais servie = on est sur l'appareil NEUF : la carte de reprise
    passe en tête, sinon la première chose vue est le QR de la clé jetable du
-   jour — exactement celle qu'il ne faut pas propager. */
-.pair--neuf .card--import {
+   jour — exactement celle qu'il ne faut pas propager. Arriver par le QR de
+   reprise (`--recu`) la met en tête pour une autre raison : c'est la seule
+   chose qu'on soit venu faire. */
+.pair--neuf .card--import,
+.pair--recu .card--import {
   order: -1;
 }
 
@@ -442,6 +570,34 @@ onUnmounted(hide)
 }
 .reveal .card__actions {
   padding: 11px 0 0;
+}
+
+/* Bascule discrète : le second QR n'existe que pour un cas de bord, il ne se
+   présente donc pas comme un bouton. */
+.reveal__swap {
+  display: block;
+  margin-top: 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--ink-3);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.reveal__swap:hover {
+  color: var(--ink);
+}
+
+/* Confirmation d'arrivée : c'est une bonne nouvelle, pas un avertissement. */
+.card__got {
+  margin: 0;
+  padding: 11px 13px 0;
+  font-size: var(--fs-md);
+  line-height: 1.55;
+  color: var(--ok);
 }
 
 @media (max-width: 560px) {

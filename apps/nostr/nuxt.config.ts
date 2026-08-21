@@ -119,6 +119,21 @@ export default defineNuxtConfig({
             "try{var t=localStorage.getItem('forome.theme');if(t==='dark'||t==='light')document.documentElement.dataset.theme=t}catch(e){}",
           tagPosition: 'head',
         },
+        {
+          /**
+           * Clé de reprise arrivée par QR (`/appareils#k=nsec1…`) : on la sort
+           * de l'URL **avant que quoi que ce soit d'autre ne tourne**.
+           *
+           * Ici et pas dans le composant, pour deux raisons. La barre d'adresse
+           * cesse de montrer une clé privée au premier paint, plutôt qu'après
+           * l'hydratation. Et le routeur ne voit jamais ce fragment : il essaie
+           * sinon de s'en servir comme sélecteur CSS, ce qui **écrit la clé dans
+           * la console** du navigateur. Voir `components/DevicePairing.vue`.
+           */
+          innerHTML:
+            "try{var h=location.hash;if(h.slice(0,3)==='#k='){window.__foromeKey=decodeURIComponent(h.slice(3));history.replaceState(null,'',location.pathname+location.search)}}catch(e){}",
+          tagPosition: 'head',
+        },
       ],
     },
   },

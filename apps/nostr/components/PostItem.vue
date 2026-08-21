@@ -313,25 +313,6 @@
               Modérer
             </button>
           </Hint>
-
-          <Hint
-            v-if="!own && !veiled"
-            :text="
-              social.isFollowed(post.pubkey)
-                ? 'ne plus suivre — met à jour ta liste de suivis, qui est publique'
-                : 'suivre — les gens que tu suis peuvent t’écrire en MP'
-            "
-          >
-            <button
-              type="button"
-              class="msg__act"
-              :class="{ 'msg__act--on': social.isFollowed(post.pubkey) }"
-              :disabled="social.publishing"
-              @click="toggleFollow"
-            >
-              {{ social.isFollowed(post.pubkey) ? 'suivi' : 'suivre' }}
-            </button>
-          </Hint>
         </div>
 
         <!-- Variante Lazy : l'import statique embarquait toute la pile d'édition
@@ -679,11 +660,6 @@ const trustTag = computed(() => {
       return null
   }
 })
-
-async function toggleFollow(): Promise<void> {
-  if (social.isFollowed(props.post.pubkey)) await social.unfollow(props.post.pubkey)
-  else await social.follow(props.post.pubkey)
-}
 
 /**
  * Analyse **paresseuse** : seulement si un balisage est présent. Les messages de

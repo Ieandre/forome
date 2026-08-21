@@ -61,7 +61,7 @@
     <form
       ref="boxEl"
       class="composer__box"
-      :class="{ 'composer__box--collapsed': collapsed }"
+      :class="{ 'composer__box--collapsed': collapsed, 'composer__box--anon': anonOn }"
       @submit.prevent="send"
       @focusin="expanded = true"
       @focusout="onFocusOut"
@@ -86,9 +86,64 @@
         </span>
       </div>
 
+      <!--
+        La rangée qui dit QUI parle est aussi celle qui le change : l'anonymat
+        est une propriété de la voix, pas de la mise en forme (il n'a donc rien
+        à faire dans `MarkupToolbar`) ni du compte (ce n'est pas un réglage, il
+        se prend fil par fil).
+
+        L'état se voit sur trois choses à la fois — le masque à la place de
+        l'avatar, le cadre tireté, le libellé du bouton. Une seule ne suffirait
+        pas : publier est définitif sur Nostr, donc se tromper de voix ne se
+        rattrape pas, et un mode rémanent qu'on ne voit pas est un mode qu'on
+        oublie.
+      -->
       <div class="composer__top">
-        <UserAvatar v-if="identity.pubkey" :pubkey="identity.pubkey" :size="18" />
-        <span class="composer__as">{{ identity.displayName }}</span>
+        <template v-if="anonOn">
+          <!-- `mask` forcé : la clé de ce fil n'a encore rien publié, donc rien
+               n'a pu apprendre au store que c'en est une (`profiles.noteAuthor`
+               se nourrit des events reçus). -->
+          <UserAvatar mask :pubkey="anonPubkey" :size="18" />
+          <span class="composer__as composer__as--anon">{{ anonName(anonPubkey) }}</span>
+          <!-- Le retour se nomme, il n'est pas un second appui sur le même
+               bouton : sortir de l'anonymat est le geste qui expose. -->
+          <button type="button" class="composer__voice" @click="setAnon(false)">
+            ↩ revenir à {{ identity.displayName }}
+          </button>
+        </template>
+        <template v-else>
+          <UserAvatar v-if="identity.pubkey" :pubkey="identity.pubkey" :size="18" />
+          <span class="composer__as">{{ identity.displayName }}</span>
+          <button type="button" class="composer__voice" @click="setAnon(true)">
+            <Glyph name="anon" />
+            anonyme
+          </button>
+        </template>
+      </div>
+
+      <!--
+        Carte de première fois — même motif que l'encart d'identité au-dessus :
+        une fois, en ligne, puis jamais.
+
+        Le troisième paragraphe n'est pas une précaution juridique. Promettre
+        l'anonymat sans dire contre qui, c'est mentir par omission à quelqu'un
+        qui va peut-être écrire quelque chose qu'il ne peut pas reprendre.
+      -->
+      <div v-if="anonOn && !anonStore.seen && !collapsed" class="composer__anon-card">
+        <p>
+          Ce message sera signé par une clé créée pour ce fil. Rien ne le relie à
+          <strong>{{ identity.displayName }}</strong
+          >.
+        </p>
+        <p>
+          Dans <em>ce</em> topic, tes messages anonymes porteront tous
+          « {{ anonName(anonPubkey) }} » — on verra que c'est la même voix. Dans un autre
+          topic, une autre clé.
+        </p>
+        <p class="composer__anon-warn">
+          Ça te cache des lecteurs, pas du relais : il voit ta connexion.
+        </p>
+        <button type="button" class="btn btn--sm" @click="anonStore.markSeen()">j'ai compris</button>
       </div>
 
       <MarkupToolbar
@@ -147,7 +202,7 @@
           <span class="composer__pow mono">{{ powLabel }}</span>
         </Explain>
         <button type="submit" class="btn btn--sm btn--primary" :disabled="!canSend">
-          {{ publisher.publishing.value ? 'envoi…' : 'Poster' }}
+          {{ publisher.publishing.value ? 'envoi…' : anonOn ? 'Poster anonymement' : 'Poster' }}
         </button>
       </div>
     </form>
@@ -198,7 +253,7 @@
  * où ça devient pertinent, sans qu'on lui ait fait payer un clic pour écrire.
  */
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
-import type { NostrEvent } from '~/types/nostr'
+import { anonName, type NostrEvent } from '~/types/nostr'
 import type { MarkupKind, BlockKind } from '~/utils/serialize'
 import { imetaTags, type ImageMeta } from '~/utils/media'
 import { quotePreview } from '~/utils/format'
@@ -221,6 +276,7 @@ const emit = defineEmits<{
 }>()
 
 const identity = useIdentityStore()
+const anonStore = useAnonStore()
 const profiles = useProfileStore()
 const relayStore = useRelayStore()
 const publisher = usePublisher()
@@ -228,6 +284,25 @@ const devTools = useDevTools()
 const images = useImageUpload()
 
 const draft = ref('')
+
+/* ---------------------------------------------------------- mode anonyme
+ *
+ * L'état vit dans le store et non ici : il est **rémanent par topic** (§3.7).
+ * Un `ref` local repartirait à zéro au démontage du composeur — c'est-à-dire au
+ * moindre aller-retour vers la liste — et on reviendrait dans son fil d'aveu
+ * sous son pseudo sans que rien ne l'ait annoncé.
+ */
+const anonOn = computed(() => anonStore.isEnabled(props.rootId))
+const anonPubkey = computed(() => (anonOn.value ? anonStore.pubkeyFor(props.rootId) : ''))
+
+function setAnon(on: boolean): void {
+  anonStore.setEnabled(props.rootId, on)
+  // La clé publique fait partie de l'id miné (voir `buildUnsigned`) : le travail
+  // spéculatif de l'autre voix ne vaut plus rien. `usePowMiner` l'écarterait de
+  // lui-même — sa signature de brouillon inclut `pubkey` — mais relancer tout de
+  // suite évite de payer le minage à l'appui sur Entrée.
+  onInput()
+}
 
 /** Frappe `@…` en cours dans l'éditeur, et les candidats qu'elle désigne. */
 const mentionQuery = ref<string | null>(null)
@@ -423,8 +498,26 @@ const imageTags = computed(() => imetaTags(draft.value, images.attached.value))
 /** Minage spéculatif sur le brouillon : voir l'en-tête de `usePowMiner`. */
 function onInput(): void {
   publisher.miner.speculate(() =>
-    publisher.draftReply(draft.value, props.rootId, props.root, props.replyTo ?? null, imageTags.value),
+    publisher.draftReply(
+      draft.value,
+      props.rootId,
+      props.root,
+      props.replyTo ?? null,
+      imageTags.value,
+      undefined,
+      voice(),
+    ),
   )
+}
+
+/**
+ * La voix de l'envoi en cours. Recalculée à chaque appel plutôt que gardée dans
+ * un `computed` : elle porte une fonction de signature liée à une clé privée, et
+ * un objet réactif qui la retient n'a aucune raison d'exister plus longtemps que
+ * l'envoi.
+ */
+function voice() {
+  return anonOn.value ? anonStore.voiceFor(props.rootId) : undefined
 }
 
 function pickImage(): void {
@@ -485,6 +578,7 @@ async function send(): Promise<void> {
     root: props.root,
     parent: props.replyTo ?? null,
     tags: imageTags.value,
+    voice: voice(),
     /*
      * Le message part à l'écran AU CLIC, avant le minage et la signature (§6.3).
      * C'est le seul moment que l'utilisateur relie à son geste : tout ce qui
@@ -607,6 +701,73 @@ function doneBackup(): void {
   font-size: var(--fs-md);
   color: var(--ink-2);
 }
+/*
+ * Mode anonyme (§3.7) : le cadre passe en tiretés.
+ *
+ * C'est le seul état du composeur qui change son gabarit et pas seulement sa
+ * couleur, et c'est voulu — la couleur seule ne survit ni au daltonisme ni à un
+ * écran lu de biais, et cet état-là ne peut pas se rater. Le tireté est repris
+ * sur le masque de la rangée du fil : le même trait aux deux moments, écrire et
+ * relire.
+ *
+ * `:focus-within` repasse au bleu ailleurs ; ici la bordure reste grise et
+ * tiretée, sinon écrire dans le champ effacerait la seule marque visible du
+ * mode au moment précis où elle sert.
+ */
+.composer__box--anon,
+.composer__box--anon:focus-within {
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--ink-4) 60%, transparent);
+  box-shadow: none;
+}
+.composer__as--anon {
+  color: var(--ink-3);
+}
+/* Bouton de bascule : poussé à droite de la rangée d'identité, en discret. La
+   voix par défaut est le compte (§3.6), donc le geste qui la quitte ne doit pas
+   se présenter comme l'action principale de la rangée. */
+.composer__voice {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 7px;
+  border: 1px solid transparent;
+  border-radius: var(--r-control);
+  background: none;
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--ink-4);
+  cursor: pointer;
+}
+.composer__voice:hover {
+  border-color: var(--line);
+  color: var(--ink-2);
+}
+.composer__voice .glyph {
+  width: 11px;
+  height: 11px;
+}
+
+/* Fond neutre et non `--link-soft` comme l'encart d'identité : celui-ci parle
+   d'un compte, celle-là parle de son absence. */
+.composer__anon-card {
+  margin: 8px 13px 0;
+  padding: 11px 13px;
+  background: var(--surface-3);
+  border: 1px dashed color-mix(in srgb, var(--ink-4) 45%, transparent);
+  border-radius: var(--r-control);
+  font-size: var(--fs-sm);
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+.composer__anon-card p {
+  margin: 0 0 8px;
+}
+.composer__anon-warn {
+  color: var(--ink-3);
+}
+
 /* Bandeau de la cible. Même vocabulaire que `.msg__quote` du fil — filet à
    gauche, fond teinté, nº — pour que le composeur montre déjà ce que la réponse
    publiée montrera. Le filet est bleu et non gris : c'est la cible ACTIVE, celle
@@ -904,6 +1065,23 @@ function doneBackup(): void {
 .composer__box--collapsed .composer__as,
 .composer__box--collapsed .composer__toolbar,
 .composer__box--collapsed .composer__bottom {
+  display: none;
+}
+/*
+ * Replié, la bascule de voix disparaît — pas l'état.
+ *
+ * La barre repliée est une invitation d'une ligne, pas une surface de commande :
+ * elle ne porte ni « Poster », ni la barre d'outils, et un bouton « ↩ revenir à
+ * khey_… » y prendrait plus de place que le champ. Il revient au dépli, avec le
+ * reste du chrome.
+ *
+ * Ce qui reste, en revanche, est obligatoire : le masque garde le créneau de
+ * l'avatar et le cadre reste tireté. Le mode est rémanent par fil (§3.7), donc
+ * on peut revenir dans un topic où il est armé sans avoir rien fait — et un état
+ * rémanent qu'on ne voit pas est un état qu'on oublie, au moment précis où
+ * l'oubli est définitif.
+ */
+.composer__box--collapsed .composer__voice {
   display: none;
 }
 /* `1.6em` = exactement l'interligne du champ, et sans padding pour l'amputer :

@@ -39,7 +39,7 @@
                 :compact="ambiance"
                 :fresh="liveIds.has(p.id)"
                 :targeted="targetId === p.id"
-                :own="p.pubkey === identity.pubkey"
+                :own="p.pubkey === identity.pubkey || anon.isMine(p.pubkey)"
                 :state="ownState.get(p.id)"
                 :editing="editingId === p.id"
                 @reply="onReplyRequest"
@@ -146,6 +146,7 @@ import {
   KIND_THREAD,
   FIREHOSE_TOPIC_ID,
   editTargetOf,
+  isAnon,
   resolveRevisions,
   latestRevision,
   type NostrEvent,
@@ -177,6 +178,7 @@ const BODY_AMBIANCE = [
 const relayStore = useRelayStore()
 const profiles = useProfileStore()
 const identity = useIdentityStore()
+const anon = useAnonStore()
 const publisher = usePublisher()
 const route = useRoute()
 
@@ -432,7 +434,12 @@ function noteRevision(ev: NostrEvent, anchorId: string): boolean {
  */
 function toPost(ev: NostrEvent, topicId: string, root = false): LoadedPost {
   eventById.set(ev.id, ev)
+  // L'ordre compte : `noteAuthor` enregistre le masque (§3.7), et c'est lui qui
+  // fait renoncer `want` à chercher un kind 0 qui n'existe pas. Inversés, on
+  // enverrait une requête de profil par message anonyme.
+  profiles.noteAuthor(ev)
   profiles.want(ev.pubkey)
+  const masked = isAnon(ev)
 
   const known = revisionsByAnchor.get(ev.id)
   const chain = known ? resolveRevisions(ev, known.values()) : null
@@ -446,6 +453,7 @@ function toPost(ev: NostrEvent, topicId: string, root = false): LoadedPost {
     content: shown.content,
     replyTo: root ? null : parentIdOf(ev),
     root,
+    ...(masked ? { anon: true } : {}),
     imeta: parseImeta(shown.tags),
     ...(shown === ev ? {} : { editedAt: shown.created_at }),
     ...(chain && chain.length > 1 ? { versions: chain } : {}),
@@ -1100,6 +1108,11 @@ async function saveEdit(payload: { id: string; content: string; tags: string[][]
     content: payload.content,
     anchor,
     tags: payload.tags,
+    // Une correction repart sous la clé qui a signé l'original — pas sous celle
+    // du composeur au moment où on se relit. Sinon corriger un vieux message
+    // anonyme depuis un fil où le mode est coupé le resignerait sous le compte :
+    // révision écartée par tous les lecteurs (§2.5), et lien révélé au passage.
+    ...(anchor.pubkey === identity.pubkey ? {} : { voice: anon.voiceOf(anchor.pubkey) ?? undefined }),
     onOptimistic: (ev, replacedId) => {
       editingId.value = null
       showOwnEdit(ev, replacedId)

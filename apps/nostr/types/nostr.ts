@@ -123,6 +123,12 @@ export interface Post {
   root: boolean
   index: number
   /**
+   * Publié sous une clé jetable (§3.7). Vient du **tag de l'event**, pas d'une
+   * reconnaissance de clé : l'anonymat est une propriété du message, et il faut
+   * la lire sur celui de n'importe qui, pas seulement sur les siens.
+   */
+  anon?: boolean
+  /**
    * Métadonnées des images du message (tags `imeta`, NIP-92), indexées par URL.
    * Sert à réserver leur place avant chargement — un fil qui défile en direct ne
    * doit pas sauter quand une image arrive.
@@ -278,4 +284,41 @@ export function provisionalId(): string {
 
 export function isProvisional(id: string): boolean {
   return id.startsWith(PROVISIONAL_PREFIX)
+}
+
+/* ---------------------------------------------------------------- anonymat */
+
+/**
+ * Marque d'un message anonyme (spec §3.7) : `["anon"]`.
+ *
+ * **Déclarative, et c'est assumé.** Elle ne prouve rien — n'importe qui peut
+ * signer avec une clé neuve sans la poser, et obtenir le même anonymat sans le
+ * dire. Ce qu'elle fait est plus modeste et suffisant : elle empêche notre
+ * client de faire passer un message jetable pour un nouveau venu, ce qui
+ * rendrait suspect tout compte neuf réel.
+ *
+ * Elle est dans les tags, donc dans l'id, donc dans ce qui est signé et miné :
+ * on ne peut pas l'ajouter ni la retirer après coup sans refaire l'event.
+ *
+ * Pas de valeur : elle ne porte aucune information. Y mettre le fil ou une
+ * date lierait des messages entre eux, ce que ce mode existe pour éviter.
+ */
+export const ANON_TAG = 'anon'
+
+/** true si l'auteur a publié ce message sous une clé jetable. */
+export function isAnon(ev: Pick<NostrEvent, 'tags'>): boolean {
+  return ev.tags.some((t) => t[0] === ANON_TAG)
+}
+
+/**
+ * Nom affiché d'une voix anonyme — `Anonyme·a3f81b`.
+ *
+ * Le discriminant n'est pas décoratif : dans un fil, la clé est stable (une par
+ * topic), donc deux messages du même « Anonyme » se reconnaissent. C'est ce qui
+ * empêche de se répondre à soi-même en paraissant deux. Il vient de la même
+ * fonction que le discriminant des comptes (§3.5) — une seule règle de
+ * troncature, sinon deux longueurs cohabiteraient à l'écran sans raison.
+ */
+export function anonName(pubkey: string): string {
+  return `Anonyme·${pubkey.slice(0, 6)}`
 }

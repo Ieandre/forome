@@ -8,6 +8,7 @@
       'msg--targeted': targeted,
       'msg--root': post.root,
       'msg--own': own,
+      'msg--anon': post.anon,
       'msg--pending': state === 'pending',
       'msg--unsent': unsent,
       'msg--failed': state === 'failed',
@@ -35,7 +36,15 @@
            sur un auteur au milieu d'un fil ne doit pas sortir du site. Le lien
            vers l'extérieur (njump) reste, une fois, sur la page de profil — là où
            « cette identité ne nous appartient pas » est le propos. -->
-      <Hint :text="`profil de ${profiles.displayName(post.pubkey)}`">
+      <!-- Pas de lien vers un profil : la clé n'en a pas, n'en aura pas, et
+           mener vers une page vide donnerait à croire qu'il y a quelqu'un
+           derrière à consulter. Le discriminant fait partie du nom ici — c'est
+           lui qui dit « la même voix », donc il ne peut pas être une décoration
+           conditionnelle comme sur un compte. -->
+      <Explain v-if="post.anon" term="anonyme" :body="BODY_ANON">
+        <span class="msg__author msg__author--anon">{{ anonName(post.pubkey) }}</span>
+      </Explain>
+      <Hint v-else :text="`profil de ${profiles.displayName(post.pubkey)}`">
         <NuxtLink :to="`/profil/${npub}`" class="msg__author">
           {{ profiles.displayName(post.pubkey) }}
         </NuxtLink>
@@ -43,7 +52,7 @@
       <!-- Le pseudo n'est pas unique sur Nostr (spec §3.5) : dès qu'il vient
            d'un kind 0, le discriminant de clé est obligatoire. -->
       <Explain
-        v-if="profiles.isClaimedName(post.pubkey)"
+        v-if="!post.anon && profiles.isClaimedName(post.pubkey)"
         term="discriminant"
         :body="BODY_DISCRIMINANT"
       >
@@ -52,19 +61,19 @@
 
       <!-- NIP-05 réellement vérifié (§3.5). « Injoignable » n'est pas
            « invalide » : un domaine muet ne prouve rien, et on le dit. -->
-      <Explain v-if="nip05" term="nip-05" variant="chip" :body="nip05Body">
+      <Explain v-if="nip05 && !post.anon" term="nip-05" variant="chip" :body="nip05Body">
         <span class="tag" :class="nip05TagClass">{{ nip05Label }}</span>
       </Explain>
 
       <!-- Confiance : le web of trust ne masque rien, il replie (§12.3). -->
-      <Explain v-if="trustTag" :term="trustTag.label" variant="chip" :body="trustTag.body">
+      <Explain v-if="trustTag && !post.anon" :term="trustTag.label" variant="chip" :body="trustTag.body">
         <span class="tag" :class="trustTag.cls">{{ trustTag.label }}</span>
       </Explain>
 
       <!-- Le rôle est affiché avant tout le reste : un modérateur qui intervient
            dans un fil sans marqueur est indistinguable d'un khey qui se donne de
            l'importance, et l'autorité qu'on ne voit pas n'existe pas. -->
-      <Explain v-if="staffTag" :term="staffTag.label" variant="chip" :body="staffTag.body">
+      <Explain v-if="staffTag && !post.anon" :term="staffTag.label" variant="chip" :body="staffTag.body">
         <span class="tag tag--staff">
           <Glyph name="shield" :filled="staffTag.admin" />
           <span class="visually-hidden">{{ staffTag.label }}</span>
@@ -384,7 +393,7 @@ import { ref, computed, provide } from 'vue'
 import { relativeTime, forumTime, absoluteTime, shortId, quotePreview } from '~/utils/format'
 import { npubFor, topicTitle } from '~/utils/nostr'
 import { topicPath } from '~/utils/permalink'
-import { isProvisional, type OwnState, type Post, type QuotedPost } from '~/types/nostr'
+import { anonName, isProvisional, type OwnState, type Post, type QuotedPost } from '~/types/nostr'
 import { ROLE_BADGES } from '~/types/moderation'
 import { parseRichText, hasMarkup } from '~/utils/richtext'
 
@@ -397,6 +406,11 @@ import { parseRichText, hasMarkup } from '~/utils/richtext'
 const BODY_DISCRIMINANT = [
   'Les six premiers caractères de la clé publique de cet auteur, en hexadécimal.',
   "Sur Nostr, n'importe qui peut prendre n'importe quel pseudo — seule la clé est unique. Deux comptes du même nom se distinguent ici.",
+]
+const BODY_ANON = [
+  'Ce message est signé par une clé créée pour ce fil seulement : rien ne le relie au compte de son auteur.',
+  'Le suffixe est stable ICI — deux messages qui le partagent viennent bien de la même personne. Dans un autre topic, la même personne aura un autre suffixe.',
+  "L'anonymat vaut vis-à-vis des lecteurs : le relais, lui, voit la connexion.",
 ]
 const BODY_PENDING = [
   "Le message est signé et affiché ici, mais aucun relais n'a encore accusé réception.",
@@ -800,6 +814,19 @@ function copyPermalink(): void {
   text-decoration: underline !important;
   text-underline-offset: 2px;
 }
+/* La vignette d'un masque est rendue par `UserAvatar`, qui porte seul la règle
+   « photo, identicon ou losange ». */
+.msg__author--anon {
+  color: var(--ink-3);
+  cursor: help;
+  /* Pas de `max-width` en ch comme le pseudo d'un compte : ce nom est calibré
+     (« Anonyme·a3f81b »), il ne peut pas déborder. */
+  max-width: none;
+}
+.msg--anon .msg__rail {
+  background: color-mix(in srgb, var(--ink-4) 45%, transparent);
+}
+
 .msg__disc {
   font-family: var(--font-mono);
   font-size: 10.5px;

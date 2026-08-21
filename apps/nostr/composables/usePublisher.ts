@@ -31,6 +31,7 @@ import { verifyEvent } from 'nostr-tools/pure'
 import { getPow } from 'nostr-tools/nip13'
 import type { UnsignedEvent } from 'nostr-tools/pure'
 import {
+  ANON_TAG,
   EDIT_TAG,
   KIND_APP_DATA,
   KIND_COMMENT,
@@ -47,6 +48,7 @@ import {
 import { KIND_REPORT } from '~/types/moderation'
 import { mentionTags } from '~/utils/mentions'
 import type { PublishResult } from '~/stores/relays'
+import type { Voice } from '~/stores/anon'
 
 export interface PublishOutcome {
   event: NostrEvent
@@ -106,13 +108,35 @@ export function usePublisher() {
    * Avant le minage, donc dans l'id signé — un tag ajouté après invaliderait la
    * PoW comme la signature.
    */
-  function buildUnsigned(kind: number, content: string, tags: string[][], createdAt = nowS()): UnsignedEvent | null {
-    if (!identity.pubkey) return null
+  function buildUnsigned(
+    kind: number,
+    content: string,
+    tags: string[][],
+    createdAt = nowS(),
+    /**
+     * Qui signe. Absent = le compte.
+     *
+     * ⚠️ La clé publique est dans l'event **avant** le minage, donc dans l'id :
+     * elle ne peut pas être corrigée après coup, et un brouillon miné sous une
+     * voix ne vaut rien sous l'autre. C'est ce qui rend le basculement du mode
+     * anonyme sûr par construction — `draftSignature` (`usePowMiner`) inclut
+     * `pubkey`, donc le travail spéculatif de l'autre voix est ignoré au lieu
+     * d'être réutilisé à tort.
+     */
+    voice?: Voice,
+  ): UnsignedEvent | null {
+    const author = voice?.pubkey ?? identity.pubkey
+    if (!author) return null
     if (kind !== KIND_THREAD && kind !== KIND_COMMENT) {
-      return { kind, pubkey: identity.pubkey, created_at: createdAt, tags, content }
+      return { kind, pubkey: author, created_at: createdAt, tags, content }
     }
 
     let out = inCommunity({ tags }) ? tags : [...tags, communityTag()]
+    // La marque d'anonymat est posée ici pour la même raison que celle du
+    // périmètre : point de passage unique. Un topic, une réponse et une révision
+    // signés par une clé jetable doivent tous la porter — sinon le fil affiche
+    // « Anonyme » sur le message et le pseudo par défaut sur sa correction.
+    if (voice && !out.some((t) => t[0] === ANON_TAG)) out = [...out, [ANON_TAG]]
 
     /*
      * Les mentions du texte deviennent des tags `p` — c'est ce qui fait qu'une
@@ -129,7 +153,7 @@ export function usePublisher() {
     const mentions = mentionTags(content, already)
     if (mentions.length) out = [...out, ...mentions]
 
-    return { kind, pubkey: identity.pubkey, created_at: createdAt, tags: out, content }
+    return { kind, pubkey: author, created_at: createdAt, tags: out, content }
   }
 
   /**
@@ -147,8 +171,15 @@ export function usePublisher() {
     parent: NostrEvent | null,
     extraTags: string[][] = [],
     createdAt = nowS(),
+    voice?: Voice,
   ): UnsignedEvent | null {
-    return buildUnsigned(KIND_COMMENT, content, [...replyTags(root, rootId, parent), ...extraTags], createdAt)
+    return buildUnsigned(
+      KIND_COMMENT,
+      content,
+      [...replyTags(root, rootId, parent), ...extraTags],
+      createdAt,
+      voice,
+    )
   }
 
   function draftTopic(
@@ -156,8 +187,9 @@ export function usePublisher() {
     content: string,
     extraTags: string[][] = [],
     createdAt = nowS(),
+    voice?: Voice,
   ): UnsignedEvent | null {
-    return buildUnsigned(KIND_THREAD, content, [['title', title.trim()], ...extraTags], createdAt)
+    return buildUnsigned(KIND_THREAD, content, [['title', title.trim()], ...extraTags], createdAt, voice)
   }
 
   /**
@@ -211,12 +243,14 @@ export function usePublisher() {
     anchor: NostrEvent,
     extraTags: string[][] = [],
     createdAt = nowS(),
+    voice?: Voice,
   ): UnsignedEvent | null {
     return buildUnsigned(
       KIND_COMMENT,
       content,
       [...revisionTags(anchor), [EDIT_TAG, anchor.id], ...extraTags],
       createdAt,
+      voice,
     )
   }
 
@@ -236,25 +270,35 @@ export function usePublisher() {
     /** Tags à ajouter (`imeta` des images de cette version, NIP-92). */
     tags?: string[][]
     onOptimistic?: (ev: NostrEvent, replacedId?: string) => void
+    /**
+     * La voix qui a signé l'original (§3.7). Une correction doit repartir sous
+     * **la même clé** : l'autorité de révision se tranche sur `pubkey` à la
+     * lecture, donc corriger un message anonyme depuis le compte publierait une
+     * révision que `resolveRevisions` écarterait chez tout le monde — un déchet
+     * définitif, et l'aveu du lien entre les deux identités par-dessus.
+     */
+    voice?: Voice
   }): Promise<PublishOutcome | null> {
-    if (args.anchor.pubkey !== identity.pubkey) {
+    const author = args.voice?.pubkey ?? identity.pubkey
+    if (args.anchor.pubkey !== author) {
       lastError.value = 'on ne peut corriger que ses propres messages'
       return null
     }
-    const unsigned = draftEdit(args.content, args.anchor, args.tags ?? [])
+    const unsigned = draftEdit(args.content, args.anchor, args.tags ?? [], undefined, args.voice)
     if (!unsigned) {
       lastError.value = 'aucune identité'
       return null
     }
     // `countsAsPost: false` : le compteur de §3.1 déclenche l'encart d'identité et
     // le rappel de sauvegarde de clé. Se relire n'est pas prendre la parole.
-    return run(unsigned, args.onOptimistic, { countsAsPost: false })
+    return run(unsigned, args.onOptimistic, { countsAsPost: false, voice: args.voice })
   }
 
   /** Mine, signe, vérifie, diffuse. Ne fait AUCUN affichage — c'est l'appelant. */
   async function finalizeAndPublish(
     unsigned: UnsignedEvent,
     withPow = true,
+    voice?: Voice,
   ): Promise<{
     event: NostrEvent
     firstAck: Promise<boolean>
@@ -262,18 +306,33 @@ export function usePublisher() {
     pow: number
   }> {
     const mined = withPow ? await miner.mineFor(unsigned) : { ...unsigned, id: '' }
-    const signed = (await identity.sign({
+    const template = {
       kind: mined.kind,
       created_at: mined.created_at,
       tags: mined.tags,
       content: mined.content,
       pubkey: mined.pubkey,
-    })) as NostrEvent
+    }
+    const signed = (await (voice ? voice.sign(template) : identity.sign(template))) as NostrEvent
 
     // Garde-fou : une signature invalide ici signifierait un bug de signeur (ou
     // une extension NIP-07 qui a réécrit l'event). Mieux vaut le voir tout de
     // suite que publier de l'invérifiable.
     if (!verifyEvent(signed)) throw new Error('signature invalide après signature — publication annulée')
+
+    /*
+     * Le signeur a-t-il signé sous la clé demandée ?
+     *
+     * `verifyEvent` ne le dit pas : un event signé par une AUTRE clé est
+     * parfaitement valide, il est juste de quelqu'un d'autre. Une extension
+     * NIP-07 qui a changé de compte entre le brouillon et la signature produit
+     * exactement ça — et en mode anonyme, ce serait publier sous son pseudo un
+     * message qu'on croyait détaché de lui. Sur un réseau sans suppression,
+     * c'est la fuite qu'on ne peut pas reprendre.
+     */
+    if (signed.pubkey !== mined.pubkey) {
+      throw new Error('le signeur a utilisé une autre clé que celle demandée — publication annulée')
+    }
 
     const { firstAck, settled } = relayStore.publishSplit(signed)
     return { event: signed, firstAck, settled, pow: getPow(signed.id) }
@@ -298,19 +357,33 @@ export function usePublisher() {
      */
     onSending?: (provisional: NostrEvent) => void
     onOptimistic?: (ev: NostrEvent, replacedId?: string) => void
+    /** Publier sous une clé jetable plutôt que sous le compte (§3.7). */
+    voice?: Voice
   }): Promise<PublishOutcome | null> {
-    const unsigned = draftReply(args.content, args.rootId, args.root, args.parent ?? null, args.tags ?? [])
+    const unsigned = draftReply(
+      args.content,
+      args.rootId,
+      args.root,
+      args.parent ?? null,
+      args.tags ?? [],
+      undefined,
+      args.voice,
+    )
     if (!unsigned) {
       lastError.value = 'aucune identité'
       return null
     }
     let replaces: string | undefined
     if (args.onSending) {
+      // L'écho porte déjà la bonne clé et la marque d'anonymat : la rangée
+      // affichée au clic doit dire « Anonyme » tout de suite, sinon le message
+      // s'affiche une fraction de seconde sous le pseudo qu'on venait de mettre
+      // de côté.
       const echo = { ...unsigned, id: provisionalId(), sig: '' } as NostrEvent
       replaces = echo.id
       args.onSending(echo)
     }
-    return run(unsigned, args.onOptimistic, { replaces })
+    return run(unsigned, args.onOptimistic, { replaces, voice: args.voice })
   }
 
   /**
@@ -351,13 +424,15 @@ export function usePublisher() {
     /** Tags à ajouter (`imeta` des images jointes, NIP-92). */
     tags?: string[][]
     onOptimistic?: (ev: NostrEvent, replacedId?: string) => void
+    /** Ouvrir le fil sous une clé jetable (§3.7) — le topic d'aveu. */
+    voice?: Voice
   }): Promise<PublishOutcome | null> {
-    const unsigned = draftTopic(args.title, args.content, args.tags ?? [])
+    const unsigned = draftTopic(args.title, args.content, args.tags ?? [], undefined, args.voice)
     if (!unsigned) {
       lastError.value = 'aucune identité'
       return null
     }
-    return run(unsigned, args.onOptimistic)
+    return run(unsigned, args.onOptimistic, { voice: args.voice })
   }
 
   /**
@@ -457,12 +532,23 @@ export function usePublisher() {
      * seul mécanisme — l'écho provisoire posé au clic (`onSending`), et le
      * renvoi après refus de PoW, dont le nouveau nonce donne un nouvel id.
      */
-    opts: { pow?: boolean; countsAsPost?: boolean; noRetry?: boolean; replaces?: string } = {},
+    opts: {
+      pow?: boolean
+      countsAsPost?: boolean
+      noRetry?: boolean
+      replaces?: string
+      /** Signe à la place du compte (§3.7). */
+      voice?: Voice
+    } = {},
   ): Promise<PublishOutcome | null> {
     publishing.value = true
     lastError.value = null
     try {
-      const { event, firstAck, settled, pow } = await finalizeAndPublish(unsigned, opts.pow !== false)
+      const { event, firstAck, settled, pow } = await finalizeAndPublish(
+        unsigned,
+        opts.pow !== false,
+        opts.voice,
+      )
       // L'id définitif n'apparaît qu'ici : on signale celui qu'il remplace pour
       // que l'affichage échange la rangée au lieu d'en garder deux.
       onOptimistic?.(event, opts.replaces)
@@ -497,7 +583,12 @@ export function usePublisher() {
       // Le compteur ne s'incrémente qu'après acceptation par au moins un relais
       // (§3.1) : compter une tentative refusée pousserait l'utilisateur à
       // sauvegarder une clé avec laquelle il n'a jamais rien publié.
-      if (opts.countsAsPost !== false) identity.notePost()
+      //
+      // Un message anonyme n'y compte pas non plus : ce compteur déclenche
+      // « Posté en tant que khey_… [Choisir un pseudo] », et le poser après un
+      // message publié justement pour ne pas porter ce pseudo serait à
+      // contretemps — au mieux hors sujet, au pire inquiétant.
+      if (opts.countsAsPost !== false && !opts.voice) identity.notePost()
 
       // Verdict complet en arrière-plan, pour l'affichage « accepté par N/M ».
       void settled.then((result) => {

@@ -89,6 +89,7 @@ const INDEXER_OVERRIDE_KEY = 'forome.dev.indexer'
 
 export const useTopicStore = defineStore('topics', () => {
   const relayStore = useRelayStore()
+  const profiles = useProfileStore()
   const config = useRuntimeConfig()
 
   const mode = ref<SourceMode>('threads')
@@ -192,6 +193,10 @@ export const useTopicStore = defineStore('topics', () => {
   /* ------------------------------------------------------------- ingestion */
 
   function noteActivity(ev: NostrEvent, bucket: Activity): void {
+    // La liste affiche la dernière voix de chaque topic : sans cette marque,
+    // celle d'un masque (§3.7) y apparaîtrait sous son `khey_` par défaut, dans
+    // le seul écran où l'on regarde justement qui parle où.
+    profiles.noteAuthor(ev)
     // Plafond sur la date déclarée : c'est elle qui décide l'ordre de la colonne,
     // donc un event daté dans le futur s'y installerait en tête pour toujours.
     const at = Math.min(ev.created_at, nowS())
@@ -207,6 +212,7 @@ export const useTopicStore = defineStore('topics', () => {
   }
 
   function ingestRoot(ev: NostrEvent): void {
+    profiles.noteAuthor(ev)
     // Le filtre de souscription ne couvre pas tout : les racines manquantes sont
     // rattrapées **par id** (`scheduleRootFetch`, `fetchRoot`), donc sans
     // contrainte de périmètre. Un message marqué `forome` qui répond à un fil

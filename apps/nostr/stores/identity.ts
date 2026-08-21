@@ -449,6 +449,10 @@ export const useIdentityStore = defineStore('identity', () => {
   function newKhey(): void {
     if (!import.meta.client) return
     void disconnectBunker()
+    // Une identité jetée emporte ses masques (§3.7) : garder les clés anonymes
+    // laisserait, dans le seul endroit qui le détenait, le lien entre l'identité
+    // qu'on abandonne et les messages qu'on avait détachés d'elle.
+    useAnonStore().wipe()
     localStorage.removeItem(SK_KEY)
     localStorage.removeItem(SIGNER_KEY)
     localStorage.removeItem(BUNKER_CLIENT_SK)

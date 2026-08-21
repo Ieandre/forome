@@ -1,5 +1,5 @@
 <template>
-  <form class="nt" @submit.prevent="submit">
+  <form class="nt" :class="{ 'nt--anon': anonOn }" @submit.prevent="submit">
     <!-- Mêmes valeurs que `.topic-head` (ForumShell) : lire un topic et en ouvrir
          un sont le même panneau, ils ne peuvent pas commencer à deux hauteurs
          différentes. L'en-tête porte aussi le seul retour disponible en mobile,
@@ -8,14 +8,37 @@
       <div class="nt__col nt__head-col">
         <BackButton label="retour à la liste" @click="leave" />
 
-        <UserAvatar v-if="identity.pubkey" :pubkey="identity.pubkey" :size="26" class="nt__av" />
+        <!-- Le masque prend la place de l'avatar, comme dans le fil : ouvrir un
+             fil anonymement est le cas d'usage que §3.6 nomme (le topic d'aveu),
+             il ne peut pas être moins lisible qu'y répondre. -->
+        <!-- `pubkey` vide et `mask` forcé : la clé de ce topic ne sera tirée
+             qu'à la publication, puisqu'elle est rangée sous l'id de l'event
+             (`anonStore.bindDraft`). Il n'y a donc rien à dériver, et rien à
+             annoncer non plus — d'où l'absence de suffixe sur la ligne « par »
+             juste en dessous. -->
+        <UserAvatar v-if="anonOn" mask pubkey="" :size="26" class="nt__av" />
+        <UserAvatar
+          v-else-if="identity.pubkey"
+          :pubkey="identity.pubkey"
+          :size="26"
+          class="nt__av"
+        />
 
         <div class="nt__ident">
           <h1 class="nt__kicker">Nouveau topic</h1>
+          <!-- Le discriminant n'est pas affiché ici, contrairement au fil : la
+               clé du topic est indexée sur son id, qui n'existera qu'à la
+               publication. Annoncer un suffixe maintenant serait annoncer celui
+               d'un autre fil. -->
           <p class="nt__by">
-            par <strong>{{ identity.displayName }}</strong>
+            par <strong>{{ anonOn ? 'Anonyme' : identity.displayName }}</strong>
           </p>
         </div>
+
+        <button type="button" class="nt__voice" @click="anonStore.setDraftEnabled(!anonOn)">
+          <template v-if="anonOn">↩ revenir à {{ identity.displayName }}</template>
+          <template v-else><Glyph name="anon" /> anonyme</template>
+        </button>
       </div>
     </header>
 
@@ -115,7 +138,7 @@
       <div class="nt__col">
         <p v-if="errorText" class="nt__error">{{ errorText }}</p>
         <div class="nt__row">
-          <p class="nt__note" :class="{ 'nt__note--miss': !!missing }">{{ missing ?? IRREVERSIBLE }}</p>
+          <p class="nt__note" :class="{ 'nt__note--miss': !!missing }">{{ missing ?? (anonOn ? IRREVERSIBLE_ANON : IRREVERSIBLE) }}</p>
           <!-- Réglage du client, pas information de forum : sous `?dev=1`. -->
           <Explain
             v-if="devTools"
@@ -130,7 +153,13 @@
           </Explain>
           <button type="button" class="btn btn--ghost nt__cancel" @click="leave">Annuler</button>
           <button type="submit" class="btn btn--primary" :disabled="!canSubmit">
-            {{ publisher.publishing.value ? 'Publication…' : 'Publier le topic' }}
+            {{
+              publisher.publishing.value
+                ? 'Publication…'
+                : anonOn
+                  ? 'Publier anonymement'
+                  : 'Publier le topic'
+            }}
           </button>
         </div>
       </div>
@@ -153,6 +182,11 @@ import { imetaTags, type ImageMeta } from '~/utils/media'
 
 const TITLE_MAX = 180
 const IRREVERSIBLE = 'Publier envoie ce topic sur le réseau : tu ne pourras plus le retirer.'
+const IRREVERSIBLE_ANON =
+  'Publier envoie ce topic sur le réseau, sous une clé jetable : ni retrait, ni lien avec ton compte.'
+
+const anonStore = useAnonStore()
+const anonOn = computed(() => anonStore.isDraftEnabled())
 
 const title = ref('')
 const body = ref('')
@@ -303,8 +337,14 @@ async function submit(): Promise<void> {
     title: title.value,
     content: body.value,
     tags: [...imetaTags(body.value, images.attached.value), ...poll],
+    voice: anonOn.value ? anonStore.draftVoice() : undefined,
   })
   if (outcome && outcome.result.accepted.length > 0) {
+    // La clé du brouillon prend le nom du topic qui vient de naître — avant la
+    // navigation, sinon le fil s'ouvre, le composeur demande la clé de ce
+    // topic-là, n'en trouve pas, et en tire une neuve : l'auteur répondrait sous
+    // un autre « Anonyme » que celui de son propre message racine.
+    if (anonOn.value) anonStore.bindDraft(outcome.event.id)
     await router.push(topicPath(outcome.event.id, title.value))
   }
 }
@@ -371,6 +411,46 @@ async function submit(): Promise<void> {
 .nt__by strong {
   color: var(--ink-2);
   font-weight: 600;
+}
+
+/* Bascule de voix — mêmes valeurs que le composeur du fil (§3.7) : ouvrir un
+   topic et y répondre sont le même geste sous deux gabarits, ils ne peuvent pas
+   se dire avec deux vocabulaires. Le masque, lui, est rendu par `UserAvatar`. */
+.nt__voice {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  border: 1px solid transparent;
+  border-radius: var(--r-control);
+  background: none;
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--ink-4);
+  cursor: pointer;
+}
+.nt__voice:hover {
+  border-color: var(--line);
+  color: var(--ink-2);
+}
+.nt__voice .glyph {
+  width: 12px;
+  height: 12px;
+}
+/* Le tireté court sur la zone de frappe, pas sur le panneau entier : c'est le
+   message qui part sous une clé jetable, et un panneau plein écran en pointillés
+   se lirait comme un état de chargement.
+
+   Le `:focus-within` est repris pour la même raison que dans le composeur du
+   fil : sans lui, écrire dans le champ repeint la bordure en bleu et efface la
+   seule marque du mode au moment où elle sert. Il l'emporte par spécificité sur
+   `.nt__editor:focus-within`, déclaré plus bas — pas par l'ordre. */
+.nt--anon .nt__editor,
+.nt--anon .nt__editor:focus-within {
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--ink-4) 60%, transparent);
+  box-shadow: none;
 }
 
 /* -------------------------------------------------------------------- corps */

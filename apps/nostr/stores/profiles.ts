@@ -11,7 +11,7 @@
 import { defineStore } from 'pinia'
 import { reactive } from 'vue'
 import { isValid as nip05IsValid, isNip05 } from 'nostr-tools/nip05'
-import { KIND_PROFILE, type Profile } from '~/types/nostr'
+import { KIND_PROFILE, anonName, isAnon, type NostrEvent, type Profile } from '~/types/nostr'
 import { kheyHandle, keyDiscriminator } from '~/utils/nostr'
 
 /**
@@ -46,9 +46,42 @@ export const useProfileStore = defineStore('profiles', () => {
   const nip05 = reactive(new Map<string, Nip05Status>())
   const wanted = new Set<string>()
   const requested = new Set<string>()
+  /**
+   * Clés vues signant un message anonyme (§3.7).
+   *
+   * Le marqueur vit **ici** et pas au point d'affichage parce que `displayName`
+   * est appelé depuis une douzaine d'endroits qui n'ont qu'une clé en main — la
+   * citation d'une réponse, la dernière voix d'un topic dans la liste, une
+   * notification de mention. Un test `isAnon(ev)` à chacun d'eux serait un test
+   * à oublier quelque part, et l'oubli afficherait `khey_…` sur un message
+   * publié précisément pour ne pas le porter.
+   *
+   * `reactive` pour la même raison que `cache` : une rangée déjà rendue doit se
+   * remettre à jour quand on apprend que sa voix est un masque.
+   */
+  const anonKeys = reactive(new Set<string>())
   let timer: ReturnType<typeof setTimeout> | null = null
 
+  /**
+   * Enregistre ce que l'event dit de son auteur, avant tout affichage.
+   *
+   * Appelé à l'ingestion — c'est le seul moment où l'on tient l'event, et
+   * `displayName` n'en verra jamais un. Sans effet et idempotent : la marque est
+   * dans l'id signé, donc elle ne change pas d'un passage à l'autre.
+   */
+  function noteAuthor(ev: NostrEvent): void {
+    if (isAnon(ev)) anonKeys.add(ev.pubkey)
+  }
+
+  function isAnonKey(pubkey: string): boolean {
+    return anonKeys.has(pubkey)
+  }
+
   function want(pubkey: string): void {
+    // Une clé jetable ne publie pas de kind 0 (`stores/anon.ts`) : la demander
+    // coûterait une requête par message anonyme pour un profil qui n'existe pas,
+    // et dirait au relais quelles clés nous intéressent.
+    if (anonKeys.has(pubkey)) return
     if (!pubkey || requested.has(pubkey) || cache.has(pubkey)) return
     wanted.add(pubkey)
     if (timer) return
@@ -174,8 +207,17 @@ export const useProfileStore = defineStore('profiles', () => {
     return nip05.get(pubkey) ?? null
   }
 
-  /** Pseudo affiché : celui du kind 0 s'il existe, sinon le défaut khey_. */
+  /**
+   * Pseudo affiché : « Anonyme·… » pour un masque, celui du kind 0 s'il existe,
+   * sinon le défaut khey_.
+   *
+   * L'anonymat passe **avant** le kind 0 et pas après : une clé jetable n'en
+   * publie pas, mais si l'on en reçoit un — clé réutilisée, client tiers, kind 0
+   * fabriqué — le respecter donnerait un nom choisi à une voix qui ne devrait
+   * pas en avoir, dans le fil où quelqu'un a demandé à ne pas être nommé.
+   */
   function displayName(pubkey: string): string {
+    if (anonKeys.has(pubkey)) return anonName(pubkey)
     want(pubkey)
     return cache.get(pubkey)?.name ?? kheyHandle(pubkey)
   }
@@ -186,6 +228,9 @@ export const useProfileStore = defineStore('profiles', () => {
    * contient déjà la clé.
    */
   function isClaimedName(pubkey: string): boolean {
+    // « Anonyme·a3f81b » porte déjà son discriminant : le doubler écrirait la
+    // clé deux fois de suite.
+    if (anonKeys.has(pubkey)) return false
     return !!cache.get(pubkey)?.name
   }
 
@@ -306,6 +351,8 @@ export const useProfileStore = defineStore('profiles', () => {
     want,
     ingest,
     displayName,
+    noteAuthor,
+    isAnonKey,
     isClaimedName,
     discriminator,
     get,

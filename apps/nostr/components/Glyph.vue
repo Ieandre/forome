@@ -35,12 +35,21 @@
       <circle cx="12" cy="12" r="8.2" />
       <path d="M6.2 17.8 17.8 6.2" />
     </template>
+
+    <!-- Losange : une forme SANS visage, là où toutes les autres identités du
+         forum en portent un (l'identicon est un motif dérivé de la clé). C'est
+         la seule case de la colonne d'avatar qui ne dérive de rien — et c'est
+         exactement ce qu'elle doit dire. -->
+    <template v-else-if="name === 'anon'">
+      <path d="M12 3.4 20.6 12 12 20.6 3.4 12Z" />
+    </template>
   </svg>
 </template>
 
 <script setup lang="ts">
 /**
- * Les états que le forum répète : verrouillé, épinglé, rôle, masqué, banni.
+ * Les états que le forum répète : verrouillé, épinglé, rôle, masqué, banni,
+ * anonyme.
  *
  * Ils ne passent en icône QUE parce qu'ils sont conventionnels — cadenas,
  * épingle, bouclier s'apprennent ailleurs. « raid », « toi », « auteur du
@@ -53,7 +62,7 @@
  * à `Hint.nameChild()`, qui ne nomme un déclencheur que s'il est vide de texte.
  */
 defineProps<{
-  name: 'lock' | 'pin' | 'shield' | 'hidden' | 'banned'
+  name: 'lock' | 'pin' | 'shield' | 'hidden' | 'banned' | 'anon'
   /** Le bouclier plein distingue l'admin du modérateur. Lui seul s'en sert. */
   filled?: boolean
 }>()

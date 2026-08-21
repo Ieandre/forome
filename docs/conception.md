@@ -326,6 +326,77 @@ de réputation, donc pas de folklore, donc pas de culture. D'où la borne :
 Si l'usage réel montre que le jetable devient le défaut, c'est un signal
 d'échec produit à traiter, pas une victoire de l'anonymat.
 
+### 3.7 Mode anonyme : le grain fin du jetable
+
+« new khey » (§3.6) répond au besoin *« je veux me détacher de mon
+historique »*. Il ne répond pas à *« je veux dire **ça** sans que ce soit
+signé de moi »* — pour cela il faudrait changer d'identité, poster, revenir, et
+personne ne le fera. D'où le **mode anonyme** : une paire de clés éphémère signe
+le message à la place de celle du compte, **sans que l'identité courante bouge**.
+
+#### Une clé par topic
+
+Le grain n'est pas le message. Une clé par message rendrait deux messages du
+même auteur indistinguables de deux personnes — donc permettrait de se répondre
+à soi-même en paraissant deux, dans le fil qu'on a ouvert. Une clé par topic
+donne un `Anonyme·a3f81b` **stable dans ce fil et nulle part ailleurs** : la même
+voix se voit, rien ne la relie à un autre fil. C'est le *poster ID* de 4chan, et
+c'est la borne de §3.6 transposée au grain du message.
+
+Conséquence heureuse pour §5 : le compte de participants d'un topic reste juste,
+puisqu'une personne anonyme y vaut exactement une clé.
+
+#### Le message le dit
+
+Un message anonyme porte `["anon"]` et s'affiche sous un losange, sans identicon
+ni lien de profil. La marque est **déclarative et ne prouve rien** — n'importe
+qui peut signer avec une clé neuve sans la poser. Ce qu'elle empêche est plus
+modeste et suffisant : que le client fasse passer un message jetable pour un
+nouveau venu, ce qui rendrait suspect **tout compte neuf réel**.
+
+#### Ce que ça ne protège pas
+
+**Le relais voit la connexion** : même socket, même IP, même session que les
+messages signés du compte. L'anonymat vaut vis-à-vis des *lecteurs*, pas de
+l'opérateur, et l'interface le dit avant le premier envoi. Promettre l'anonymat
+sans nommer contre qui, c'est mentir par omission à quelqu'un qui s'apprête à
+écrire ce qu'il ne pourra pas reprendre.
+
+Il en découle une règle que le code doit tenir : **on ne s'abonne jamais aux clés
+anonymes**. Demander `{"#p": [ma clé, mes clés jetables]}` inscrirait le lien
+dans une requête que le relais lit et journalise, là où il n'est aujourd'hui
+qu'inférable. Le prix, réel : une réponse à un message anonyme ne notifie pas —
+on la voit en rouvrant le fil, qui se souscrit par `#E` et ne nomme personne.
+
+#### Ce que ça coûte à la modération
+
+Le débit par clé (§12.2) ne mord plus : chaque fil donne une clé neuve. Restent
+la PoW, qui est payée à l'identique, et le fait qu'un `blocked` ne peut pas viser
+une clé qui n'existe pas encore. Ce n'est pas une régression du mode anonyme mais
+de §3.6, qui a déjà cette propriété — et durcir la policy sur le tag `anon` ne
+protégerait de rien, puisqu'un spammeur ne le pose pas. Ce qui tient reste ce qui
+tenait : la PoW, le web of trust (§12.3) qui enfonce mécaniquement les clés
+neuves, et le refus avant stockage pour ce qu'on voit passer.
+
+#### Où vivent les clés
+
+En localStorage, parce que **corriger son message demande de le resigner** (§2.5 :
+l'autorité de révision se tranche sur `pubkey`). Elles ne sont ni exportées avec
+la `nsec` ni synchronisées : un message anonyme n'est pas réclamable depuis un
+autre appareil. C'est une propriété, pas un manque. « new khey » les efface avec
+le reste — une identité jetée emporte ses masques, sinon le lien survivrait dans
+le seul endroit qui le détenait.
+
+#### La borne, comme en §3.6
+
+Le mode est **rémanent par fil** et coupé par défaut. Rémanent, parce que
+reprendre le geste à chaque réponse d'un fil d'aveu est intenable et qu'un oubli
+y expose ; coupé par défaut, parce que l'identité persistante reste la voix
+normale. Ce que la rémanence exige en échange, et qui n'est pas négociable :
+l'état est visible en permanence dans le composeur — masque, cadre tireté,
+libellé du bouton. Un état rémanent qu'on ne voit pas est un état qu'on oublie,
+et ici l'oubli est définitif.
+
 ---
 
 ## 4. Ce que la signature débloque
@@ -910,6 +981,8 @@ Consignées pour ne pas refaire le débat tous les six mois.
 |---|---|
 | **Protocole signé maison** | l'interopérabilité et une canonicalisation spécifiée en amont valent plus que l'ordre total et l'horloge fiable qu'un serveur central donnerait. Prix payé : §2.4, §3.2, §3.5, §9.2 |
 | **Inscription, même minimale** | le coût d'identité à l'entrée est le premier frein produit (§3.1). L'identité anonyme est le défaut, bornée par §3.6 : *persistante*, le jetable reste secondaire |
+| **Clé jetable par message** (plutôt que par topic) | l'anonymat parfait dans un fil autorise à se répondre à soi-même en paraissant deux, sans que le lecteur puisse le voir. Une clé par topic garde la voix reconnaissable là où ça compte et nulle part ailleurs (§3.7) |
+| **PoW renforcée sur le tag `anon`** | un spammeur ne pose pas le tag. Taxer la marque ne taxerait que ceux qui jouent le jeu (§3.7) |
 | **Clés d'appareil révocables** | Nostr n'offre pas la délégation (§3.2). Le signeur distant NIP-46 reconstruit le modèle pour qui le veut ; sinon, perte d'appareil = compromission sans recours |
 | **NIP-04 pour les MP** | déprécié, fuite des métadonnées. NIP-17 uniquement |
 | **kind 1 pour les messages** | pollution croisée avec les flux sociaux, pas de titre (§2.3) |

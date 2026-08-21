@@ -170,6 +170,9 @@ export const useNotificationStore = defineStore('notifications', () => {
     // une notification est une sollicitation, pas du contenu qu'on parcourt.
     if (social.isMuted(ev.pubkey)) return
     if (forumEvents.value.has(ev.id)) return
+    // Une mention peut venir d'un masque (§3.7) : la notification doit dire
+    // « Anonyme·… », pas le `khey_` que la clé jetable donnerait par défaut.
+    profiles.noteAuthor(ev)
     profiles.want(ev.pubkey)
     const next = new Map(forumEvents.value)
     next.set(ev.id, ev)
@@ -329,6 +332,19 @@ export const useNotificationStore = defineStore('notifications', () => {
     const me = identity.pubkey
     if (!me || subs.length > 0) return
     load()
+    /*
+     * ⚠️ Les clés anonymes (§3.7) ne sont **jamais** ajoutées à ce filtre, et
+     * l'omission est la fonctionnalité.
+     *
+     * Demander `{"#p": [ma clé, mes clés jetables]}` inscrirait le lien entre
+     * elles dans une requête que le relais lit, journalise et peut rejouer. Le
+     * relais peut déjà corréler par la connexion — c'est dit à l'écran — mais
+     * l'inférence par IP et l'aveu explicite dans un filtre ne sont pas la même
+     * chose, et l'un des deux dépend de nous.
+     *
+     * Le prix, réel : une réponse à un message anonyme ne notifie pas. On la
+     * voit en rouvrant le fil, qui se souscrit par `#E` et ne nomme personne.
+     */
     subs.push(
       relayStore.subscribe(
         { kinds: [KIND_THREAD, KIND_COMMENT], '#p': [me], limit: 100 },

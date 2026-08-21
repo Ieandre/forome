@@ -489,6 +489,30 @@ export const useTopicStore = defineStore('topics', () => {
     return next
   }
 
+  /**
+   * Une racine + son activité en rangée de liste. Partagé par le classement et
+   * par `rowFor` : ce sont les deux seuls endroits qui fabriquent un `TopicRow`
+   * localement, et deux formes qui divergent donneraient une rangée qui change
+   * de contenu selon qu'elle est classée ou rattrapée.
+   */
+  function rowFromRoot(root: NostrEvent, now: number): TopicRow {
+    const a = activity.value.get(root.id) ?? NO_ACTIVITY
+    return {
+      id: root.id,
+      title: topicTitle(root),
+      pubkey: root.pubkey,
+      createdAt: root.created_at,
+      // même plafond que dans `noteActivity`, pour la racine cette fois : un
+      // topic ouvert avec une date dans le futur tiendrait la tête de liste.
+      lastAt: Math.min(a.lastAt || root.created_at, now),
+      lastPubkey: a.lastPubkey || root.pubkey,
+      lastText: a.lastText,
+      replies: a.replies,
+      people: a.people.size,
+      vel: velocityOf(a),
+    }
+  }
+
   const rows = computed<TopicRow[]>(() => {
     // Dépendance explicite à la cadence : l'ORDRE n'a plus besoin d'elle (il ne
     // dépend que des dates de dernier message), mais la vélocité du rail de
@@ -536,23 +560,7 @@ export const useTopicStore = defineStore('topics', () => {
 
     const now = nowS()
     const out: TopicRow[] = []
-    for (const root of roots.value.values()) {
-      const a = activity.value.get(root.id) ?? NO_ACTIVITY
-      out.push({
-        id: root.id,
-        title: topicTitle(root),
-        pubkey: root.pubkey,
-        createdAt: root.created_at,
-        // même plafond que dans `noteActivity`, pour la racine cette fois : un
-        // topic ouvert avec une date dans le futur tiendrait la tête de liste.
-        lastAt: Math.min(a.lastAt || root.created_at, now),
-        lastPubkey: a.lastPubkey || root.pubkey,
-        lastText: a.lastText,
-        replies: a.replies,
-        people: a.people.size,
-        vel: velocityOf(a),
-      })
-    }
+    for (const root of roots.value.values()) out.push(rowFromRoot(root, now))
     // La règle vit dans `compareTopicRows`, où elle est pure et testée.
     out.sort(compareTopicRows)
     return stabilize(out.slice(0, 80))
@@ -569,6 +577,28 @@ export const useTopicStore = defineStore('topics', () => {
 
   function rowById(id: string): TopicRow | null {
     return rows.value.find((r) => r.id === id) ?? null
+  }
+
+  /**
+   * La rangée d'un topic **même hors classement**.
+   *
+   * `rowById` ne voit que les 80 rangées publiées : un topic atteint par
+   * permalien, ou passé sous la barre pendant qu'on le lit, n'y figure pas — et
+   * la liste perdait alors la rangée du topic ouvert, que le §7.1 dit de garder
+   * visible quoi qu'il arrive à son rang. Il suffit d'avoir la racine.
+   *
+   * Rend `null` quand la racine est inconnue : `fetchRoot` la ramène, et la
+   * rangée apparaît au `rev` suivant.
+   */
+  function rowFor(id: string): TopicRow | null {
+    const listed = rowById(id)
+    if (listed) return listed
+    // `rowById` ne lit `rev`/`tick` que par `rows`, qui vient d'échouer : sans
+    // ces deux-là, la rangée rattrapée resterait figée sur sa première valeur.
+    void tick.value
+    void rev.value
+    const root = roots.value.get(id)
+    return root ? rowFromRoot(root, nowS()) : null
   }
 
   function rootById(id: string): NostrEvent | null {
@@ -612,6 +642,7 @@ export const useTopicStore = defineStore('topics', () => {
     stop,
     setMode,
     rowById,
+    rowFor,
     rootById,
     fetchRoot,
   }

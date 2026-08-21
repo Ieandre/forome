@@ -1,7 +1,7 @@
 <template>
   <div class="shell" :class="{ 'shell--topic-open': !!openTopicId || newTopic }">
     <aside class="shell__list">
-      <TopicList :open-topic-id="openTopicId" />
+      <TopicList :open-topic-id="openTopicId" :new-topic="newTopic" />
     </aside>
 
     <section class="shell__topic">

@@ -80,7 +80,17 @@
          résultats, elle entre en concurrence avec la seule chose qu'on regarde
          à ce moment-là. Elle revient au vidage du champ, avec son retard. -->
     <Transition name="pill-pop">
-      <button v-if="showPill" type="button" class="pill pill--pulse topic-list__pill" @click="applyPending">
+      <!-- Pas de pulsation quand le panneau droit tient le regard : orange et
+           clignotante en vision périphérique, elle redeviendrait le parasite
+           que le gel de l'ordre vient justement d'enlever. Elle s'affiche, et
+           elle se tient tranquille. -->
+      <button
+        v-if="showPill"
+        type="button"
+        class="pill topic-list__pill"
+        :class="{ 'pill--pulse': !panelBusy }"
+        @click="applyPending"
+      >
         {{
           pendingNewCount > 0
             ? `+${pendingNewCount} nouveau${pendingNewCount > 1 ? 'x' : ''} topic${pendingNewCount > 1 ? 's' : ''}`
@@ -172,7 +182,7 @@
              `DmThreadRow`), où un fil à deux se décide vraiment sur son dernier
              message ; un topic à deux cents messages, jamais. -->
         <span class="topic-row__by">{{ profiles.displayName(t.pubkey) }}</span>
-        <span class="topic-row__when mono">{{ relativeTime(t.lastAt) }}</span>
+        <span class="topic-row__when mono">{{ when(t) }}</span>
       </NuxtLink>
 
       <!-- Squelettes à la forme des rangées finales, jamais un rond qui tourne.
@@ -245,13 +255,19 @@
 
 <script setup lang="ts">
 /**
- * Tri figé (spec v2 §7.1). Deux déclencheurs, et **les deux se voient à l'écran** :
- * la souris sur la liste, ou le filtre ouvert. Pendant ce temps l'ordre affiché ne
- * bouge plus, les changements s'accumulent, et la pilule les applique d'un coup.
+ * Ordre figé (spec v2 §7.1). Trois déclencheurs : la souris sur la liste, le
+ * filtre ouvert, ou le panneau droit occupé (topic ouvert ou rédaction). L'ordre
+ * affiché ne bouge plus, les changements s'accumulent, la pilule les applique
+ * d'un coup.
  *
- * Il ne protège qu'une chose : viser une rangée sans qu'elle se dérobe. C'est peu,
- * et c'est voulu — l'ordre suit le dernier message posté (`compareTopicRows`), donc
- * il ne bouge que quand quelqu'un poste. Il n'y a plus de remue-ménage à cacher.
+ * **Le gel ne porte que sur l'ORDRE** : le contenu des rangées suit le store en
+ * direct (`liveById`). Sans ça la colonne devient un menu mort pendant la
+ * lecture, et le split 30/70 perd sa raison d'être — on voit encore quels topics
+ * chauffent, ils ne changent simplement plus de rang.
+ *
+ * Les deux familles de déclencheurs ne protègent pas la même chose : la souris
+ * protège le CLIC (viser une rangée sans qu'elle se dérobe), le panneau droit
+ * protège la LECTURE (des rangs qui s'échangent à côté du texte qu'on lit).
  *
  * ⚠️ Ne pas y rajouter le focus clavier. Il y était, et il gelait la liste tant que
  * la rangée qu'on venait de cliquer gardait le focus — donc pendant toute la
@@ -268,7 +284,7 @@ import { relativeTime } from '~/utils/format'
 import { topicPath } from '~/utils/permalink'
 import type { TopicRow } from '~/types/nostr'
 
-const props = defineProps<{ openTopicId: string | null }>()
+const props = defineProps<{ openTopicId: string | null; newTopic?: boolean }>()
 
 const topicStore = useTopicStore()
 const profiles = useProfileStore()
@@ -280,7 +296,9 @@ const hovered = ref(false)
 /** Champ de filtre ouvert — déclaré ici, et pas dans sa section, parce que le gel
  *  en dépend. */
 const searching = ref(false)
-const frozen = computed(() => hovered.value || searching.value)
+/** Le panneau droit prend le regard : un topic ouvert, ou un topic en rédaction. */
+const panelBusy = computed(() => !!props.openTopicId || !!props.newTopic)
+const frozen = computed(() => hovered.value || searching.value || panelBusy.value)
 
 const displayOrder = ref<TopicRow[]>([])
 const pendingOrder = ref<TopicRow[] | null>(null)
@@ -296,6 +314,23 @@ function onMouseLeave(): void {
   hovered.value = false
   if (!frozen.value) applyPending()
 }
+
+/**
+ * Fermer le panneau droit applique l'ordre en attente — là, et pas au retour de
+ * la souris : la liste redevient le sujet de l'écran, elle doit être à jour
+ * avant qu'on la lise. Sans ce watch, `pendingOrder` attendrait le prochain
+ * event pour être vu (le watch du store ne se déclenche qu'à l'arrivée).
+ */
+watch(panelBusy, (busy) => {
+  if (busy) return
+  // Sous 820 px la colonne était en `display: none` : aucun `mouseleave` n'a pu
+  // partir, et un curseur ne peut pas être resté dans une colonne qui n'était
+  // pas affichée. Sans ce relâchement, le `mouseenter` que les navigateurs
+  // mobiles émulent au tap gelait la liste pour toute la session.
+  hovered.value = false
+  // Le filtre, lui, garde la main : c'est `closeSearch` qui le relâche.
+  if (!frozen.value) applyPending()
+})
 
 /* ------------------------------------------------------------------ filtre
    Un FILTRE de la colonne, pas une recherche du forum — et c'est le périmètre
@@ -428,7 +463,12 @@ const resultsNote = computed(() => {
 watch(
   () => topicStore.rows,
   (next) => {
-    if (!frozen.value) {
+    // Un chargement n'est pas un réordonnancement : il n'y a rien à protéger
+    // tant que les relais n'ont pas rendu leur historique, ni tant que la
+    // colonne est vide. Sans ces deux échappatoires, arriver par permalien
+    // (panneau droit occupé dès le premier rendu, donc gel armé) affichait une
+    // colonne vide surmontée d'une pilule « +40 nouveaux topics ».
+    if (!frozen.value || !topicStore.settled || displayOrder.value.length === 0) {
       displayOrder.value = next
       pendingOrder.value = null
     } else {
@@ -458,11 +498,22 @@ const showPill = computed(
 )
 
 /**
+ * Le contenu vivant, indexé par id. `displayOrder` fixe l'ORDRE — et ce peut
+ * être un instantané périmé pendant le gel ; c'est ici qu'on rebranche chaque
+ * rangée sur sa valeur courante. Les objets du store sont réutilisés tels quels,
+ * donc une rangée inchangée garde son identité, et son vnode avec.
+ */
+const liveById = computed(() => new Map(topicStore.rows.map((r) => [r.id, r])))
+
+/**
  * Le topic ouvert reste visible quoi qu'il arrive à son rang (spec v2 §7.1).
- * S'il sort du classement, on le garde en fin de liste.
+ * S'il sort du classement, on le garde en fin de liste — `rowFor` sait le
+ * fabriquer même hors des 80 rangées publiées, ce que `rowById` ne pouvait pas.
  */
 const ranked = computed<TopicRow[]>(() => {
-  const base = displayOrder.value
+  // Une rangée que le store ne publie plus (sortie des 80, ou classement repris
+  // par un tick d'indexeur) garde sa dernière valeur connue au lieu de disparaître.
+  const base = displayOrder.value.map((t) => liveById.value.get(t.id) ?? t)
   // Le maintien du topic ouvert ne vaut pas sous filtre : le §7.1 protège des
   // mouvements de RANG, il ne donne pas de passe-droit contre un filtre demandé
   // explicitement — une rangée qui ne correspond pas casse la lecture du résultat.
@@ -470,7 +521,7 @@ const ranked = computed<TopicRow[]>(() => {
     filtering.value || !props.openTopicId || base.some((t) => t.id === props.openTopicId)
       ? base
       : ((): TopicRow[] => {
-          const fromLive = topicStore.rowById(props.openTopicId!)
+          const fromLive = topicStore.rowFor(props.openTopicId!)
           return fromLive ? [...base, fromLive] : base
         })()
 
@@ -543,6 +594,24 @@ function countTitle(t: TopicRow): string {
   return parts.join(', ')
 }
 
+/**
+ * Horloge des libellés « il y a 3 min ».
+ *
+ * Les rangées ne se re-rendent que quand le store change de valeur, et un forum
+ * froid n'en produit plus aucune : passé la fenêtre de vélocité, plus rien ne
+ * bouge dans une rangée, `stabilize()` rend le même tableau, et les horodatages
+ * restaient bloqués sur l'heure de la dernière arrivée. Une cadence propre et
+ * lente, plutôt qu'un re-rendu forcé des rangées à la cadence du store.
+ */
+const clock = ref(0)
+let clockTimer: ReturnType<typeof setInterval> | null = null
+
+/** Lu pendant le rendu : c'est ce qui abonne la liste à `clock`. */
+function when(t: TopicRow): string {
+  void clock.value
+  return relativeTime(t.lastAt)
+}
+
 /** Relance les souscriptions du forum sans recharger la page. */
 function retry(): void {
   topicStore.stop()
@@ -552,6 +621,7 @@ function retry(): void {
 
 onMounted(() => {
   window.addEventListener('keydown', onSlash)
+  clockTimer = setInterval(() => clock.value++, 30_000)
   topicStore.start()
   // Document NIP-11 des relais : dit lesquels refusent l'écriture (payants) et
   // quelle PoW ils exigent. Lu une fois, tôt, pour que la première publication
@@ -564,6 +634,8 @@ onMounted(() => {
 // calcul pour un écran qui n'affiche pas la liste.
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onSlash)
+  if (clockTimer) clearInterval(clockTimer)
+  clockTimer = null
   topicStore.stop()
 })
 // Le canal personnel (suivis, MP, notifications) démarrait ici. Il est remonté

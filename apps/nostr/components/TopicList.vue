@@ -1,15 +1,14 @@
 <template>
-  <div class="topic-list" @mouseenter="hovered = true" @mouseleave="onMouseLeave">
+  <div class="topic-list">
     <!-- En-tête de la colonne. Les deux libellés de colonnes (« Sujet », « Msg »)
          sont tombés avec le tableau qu'ils coiffaient : il n'y a plus de grille à
          annoncer, et le seul nombre de la rangée est déjà nommé par sa bulle.
          Reste ce qui agit — l'action d'ouvrir un topic, en primaire.
 
-         Pas d'indicateur « figé » ici. Le gel se déclenche parce que le curseur
-         est dans la liste, et son intérêt est justement que rien ne bouge : une
-         étiquette qui apparaît et disparaît au passage de la souris décrit un
-         mécanisme sur lequel on ne peut pas agir. Le seul cas actionnable, celui
-         où l'ordre a réellement changé pendant le gel, est déjà porté par la
+         Pas d'indicateur « figé » ici. L'ordre figé est l'état normal de la
+         liste, pas un mode qui s'activerait : une étiquette décrirait un
+         mécanisme permanent sur lequel on ne peut pas agir. Le seul cas
+         actionnable — des topics nouveaux en attente — est déjà porté par la
          pilule en dessous. -->
     <div class="topic-list__head" :class="{ 'topic-list__head--searching': searching }">
       <SectionTabs v-if="!searching" />
@@ -76,25 +75,18 @@
     <!-- L'équivalent lecteur d'écran de voir la colonne rétrécir. -->
     <p class="visually-hidden" aria-live="polite">{{ resultsNote }}</p>
 
-    <!-- Masquée pendant le filtrage : orange et pulsante par-dessus des
-         résultats, elle entre en concurrence avec la seule chose qu'on regarde
-         à ce moment-là. Elle revient au vidage du champ, avec son retard. -->
+    <!-- Réservée aux topics NOUVEAUX. Un simple échange de rangs entre topics
+         déjà visibles est déjà raconté par leurs rails et leurs compteurs, qui
+         vivent en direct — il s'applique en silence au prochain retour à la
+         liste. Masquée pendant le filtrage : par-dessus des résultats, elle
+         entre en concurrence avec la seule chose qu'on regarde à ce moment-là.
+         Sans pulsation : elle peut apparaître pendant la lecture d'un topic, et
+         un battement orange en vision périphérique est exactement le parasite
+         que l'ordre figé vient d'enlever. -->
     <Transition name="pill-pop">
-      <!-- Pas de pulsation quand le panneau droit tient le regard : orange et
-           clignotante en vision périphérique, elle redeviendrait le parasite
-           que le gel de l'ordre vient justement d'enlever. Elle s'affiche, et
-           elle se tient tranquille. -->
-      <button
-        v-if="showPill"
-        type="button"
-        class="pill topic-list__pill"
-        :class="{ 'pill--pulse': !panelBusy }"
-        @click="applyPending"
-      >
-        {{
-          pendingNewCount > 0
-            ? `+${pendingNewCount} nouveau${pendingNewCount > 1 ? 'x' : ''} topic${pendingNewCount > 1 ? 's' : ''}`
-            : 'ordre mis à jour'
+      <button v-if="showPill" type="button" class="pill topic-list__pill" @click="applyPending">
+        +{{ pendingNewCount }} nouveau{{ pendingNewCount > 1 ? 'x' : '' }} topic{{
+          pendingNewCount > 1 ? 's' : ''
         }}
       </button>
     </Transition>
@@ -256,24 +248,25 @@
 
 <script setup lang="ts">
 /**
- * Ordre figé (spec §7.1). Trois déclencheurs : la souris sur la liste, le
- * filtre ouvert, ou le panneau droit occupé (topic ouvert ou rédaction). L'ordre
- * affiché ne bouge plus, les changements s'accumulent, la pilule les applique
- * d'un coup.
+ * Ordre figé par défaut (spec §7.1) — l'état normal de la liste, pas un mode.
+ * L'ordre affiché ne change jamais tout seul sous les yeux du lecteur : les
+ * changements s'accumulent (`pendingOrder`) et s'appliquent à des moments
+ * prévisibles — au retour à la liste (fermeture du topic ou du filtre), ou au
+ * clic sur la pilule « +N nouveaux topics ».
  *
  * **Le gel ne porte que sur l'ORDRE** : le contenu des rangées suit le store en
  * direct (`liveById`). Sans ça la colonne devient un menu mort pendant la
  * lecture, et le split 30/70 perd sa raison d'être — on voit encore quels topics
  * chauffent, ils ne changent simplement plus de rang.
  *
- * Les deux familles de déclencheurs ne protègent pas la même chose : la souris
- * protège le CLIC (viser une rangée sans qu'elle se dérobe), le panneau droit
- * protège la LECTURE (des rangs qui s'échangent à côté du texte qu'on lit).
- *
- * ⚠️ Ne pas y rajouter le focus clavier. Il y était, et il gelait la liste tant que
- * la rangée qu'on venait de cliquer gardait le focus — donc pendant toute la
- * lecture du topic, et seulement sur les navigateurs qui focalisent un lien cliqué.
- * Un gel qu'on ne peut relier à aucun geste visible ne s'explique pas.
+ * ⚠️ Ne pas revenir à un gel déclenché par un geste. Chaque déclencheur essayé a
+ * laissé une cicatrice : le focus clavier gelait la liste pendant toute la
+ * lecture sur les navigateurs qui focalisent un lien cliqué, le `mouseenter`
+ * émulé au tap mobile la gelait pour toute la session, et le `mouseleave`
+ * jamais émis par une colonne en `display: none` demandait un relâchement
+ * spécial. Un ordre figé par défaut n'a aucun de ces états à rattraper — et le
+ * topic pré-ouvert à l'arrivée (§7.2) rendait de toute façon le « gel » actif
+ * en quasi-permanence.
  *
  * La rangée ne répond qu'à deux questions — « j'ouvre ? » et « y a du neuf pour
  * moi ? ». Le titre porte la première et a droit à deux lignes ; l'état de
@@ -293,13 +286,11 @@ const mod = useModerationStore()
 const reading = useReadingStore()
 const relays = useRelayStore()
 
-const hovered = ref(false)
-/** Champ de filtre ouvert — déclaré ici, et pas dans sa section, parce que le gel
- *  en dépend. */
+/** Champ de filtre ouvert — déclaré ici, et pas dans sa section, parce que
+ *  l'application de l'ordre en attente en dépend. */
 const searching = ref(false)
 /** Le panneau droit prend le regard : un topic ouvert, ou un topic en rédaction. */
 const panelBusy = computed(() => !!props.openTopicId || !!props.newTopic)
-const frozen = computed(() => hovered.value || searching.value || panelBusy.value)
 
 const displayOrder = ref<TopicRow[]>([])
 const pendingOrder = ref<TopicRow[] | null>(null)
@@ -311,26 +302,20 @@ function applyPending(): void {
   }
 }
 
-function onMouseLeave(): void {
-  hovered.value = false
-  if (!frozen.value) applyPending()
+/**
+ * Le moment sans geste où l'ordre en attente s'applique : la liste redevient le
+ * sujet de l'écran (plus de topic ouvert, plus de filtre), elle doit être à
+ * jour avant qu'on la lise. Sous filtre, l'ordre attend : des résultats qui se
+ * réordonnent pendant qu'on les lit n'ont pas de sens.
+ */
+function applyIfListIsSubject(): void {
+  if (!panelBusy.value && !searching.value) applyPending()
 }
 
-/**
- * Fermer le panneau droit applique l'ordre en attente — là, et pas au retour de
- * la souris : la liste redevient le sujet de l'écran, elle doit être à jour
- * avant qu'on la lise. Sans ce watch, `pendingOrder` attendrait le prochain
- * event pour être vu (le watch du store ne se déclenche qu'à l'arrivée).
- */
+/** Sans ce watch, `pendingOrder` attendrait le prochain event pour être vu
+ *  (le watch du store ne se déclenche qu'à l'arrivée). */
 watch(panelBusy, (busy) => {
-  if (busy) return
-  // Sous 820 px la colonne était en `display: none` : aucun `mouseleave` n'a pu
-  // partir, et un curseur ne peut pas être resté dans une colonne qui n'était
-  // pas affichée. Sans ce relâchement, le `mouseenter` que les navigateurs
-  // mobiles émulent au tap gelait la liste pour toute la session.
-  hovered.value = false
-  // Le filtre, lui, garde la main : c'est `closeSearch` qui le relâche.
-  if (!frozen.value) applyPending()
+  if (!busy) applyIfListIsSubject()
 })
 
 /* ------------------------------------------------------------------ filtre
@@ -346,8 +331,9 @@ watch(panelBusy, (busy) => {
    filtre ne reproduirait pas cet écran chez le destinataire — sa liste chargée
    n'est pas la nôtre.
 
-   Le champ ouvert gèle la liste (`frozen`, en haut) : on y lit une liste courte
-   qu'on vient de demander, la voir se réordonner en tapant n'aurait pas de sens. */
+   Le champ ouvert retient l'ordre en attente (`applyIfListIsSubject`, en haut) :
+   on y lit une liste courte qu'on vient de demander, la voir se réordonner en
+   tapant n'aurait pas de sens. */
 const query = ref('')
 const searchEl = ref<HTMLInputElement | null>(null)
 const openBtn = ref<HTMLButtonElement | null>(null)
@@ -364,9 +350,11 @@ async function openSearch(): Promise<void> {
 async function closeSearch(): Promise<void> {
   query.value = ''
   searching.value = false
-  // Fermer le filtre relâche le gel : ce qui s'est accumulé pendant la recherche
-  // s'applique ici, sinon la colonne resterait sur un ordre périmé sans le dire.
-  if (!frozen.value) applyPending()
+  // Fermer le filtre est un retour à la liste : tout l'écran change à cet
+  // instant (les rangées filtrées reviennent), donc appliquer l'ordre accumulé
+  // ici ne fait rien bouger sous les yeux — et la colonne ne reste pas sur un
+  // ordre périmé sans le dire.
+  applyIfListIsSubject()
   // Sans ça le focus retombe sur <body> et la liste perd le fil du clavier au
   // moment précis où on vient de choisir ce qu'on regarde.
   await nextTick()
@@ -464,12 +452,12 @@ const resultsNote = computed(() => {
 watch(
   () => topicStore.rows,
   (next) => {
-    // Un chargement n'est pas un réordonnancement : il n'y a rien à protéger
-    // tant que les relais n'ont pas rendu leur historique, ni tant que la
-    // colonne est vide. Sans ces deux échappatoires, arriver par permalien
-    // (panneau droit occupé dès le premier rendu, donc gel armé) affichait une
-    // colonne vide surmontée d'une pilule « +40 nouveaux topics ».
-    if (!frozen.value || !topicStore.settled || displayOrder.value.length === 0) {
+    // Un chargement n'est pas un réordonnancement : tant que les relais n'ont
+    // pas rendu leur historique, ou tant que la colonne est vide, le nouvel
+    // ordre s'affiche directement. Sans ces deux échappatoires, arriver par
+    // permalien affichait une colonne vide surmontée d'une pilule « +40
+    // nouveaux topics ».
+    if (!topicStore.settled || displayOrder.value.length === 0) {
       displayOrder.value = next
       pendingOrder.value = null
     } else {
@@ -484,19 +472,7 @@ const pendingNewCount = computed(() => {
   const currentIds = new Set(displayOrder.value.map((t) => t.id))
   return pendingOrder.value.filter((t) => !currentIds.has(t.id)).length
 })
-const orderShifted = computed(() => {
-  const pending = pendingOrder.value
-  if (!pending) return false
-  const current = displayOrder.value
-  if (current.length !== pending.length) return true
-  for (let i = 0; i < current.length; i++) {
-    if (current[i]!.id !== pending[i]!.id) return true
-  }
-  return false
-})
-const showPill = computed(
-  () => frozen.value && pendingOrder.value !== null && orderShifted.value && !filtering.value,
-)
+const showPill = computed(() => pendingNewCount.value > 0 && !filtering.value)
 
 /**
  * Le contenu vivant, indexé par id. `displayOrder` fixe l'ORDRE — et ce peut

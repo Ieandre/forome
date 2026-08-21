@@ -510,12 +510,17 @@ de rechargement.
 - **Permalien obligatoire** : le state du panneau droit est dans l'URL,
   `history.pushState`, un lien partagé ouvre les deux panneaux au bon endroit.
   La culture repose entièrement sur le partage de liens — l'oublier tuerait ça.
-- **Tri figé** dès que la liste a le focus ou le curseur : les changements
-  s'accumulent en arrière-plan (indicateur ❄, compteurs `+3`), une pilule
-  « N nouveaux topics » applique le nouvel ordre d'un coup, et la liste se
-  dégèle à la fermeture du topic. Sans ça, les topics bougent sous le curseur et
-  c'est insupportable en dix secondes. **C'est l'innovation UX centrale : on ne
-  perd jamais sa position dans le flux.**
+- **Tri figé par défaut** : l'ordre ne se réordonne jamais tout seul sous les
+  yeux du lecteur — c'est l'état normal de la liste, pas un mode déclenché par
+  le curseur ou le focus (chaque déclencheur essayé a produit des gels
+  inexplicables, voir `TopicList.vue`). Les changements s'accumulent en
+  arrière-plan et s'appliquent à des moments prévisibles : au retour à la liste
+  (fermeture du topic ou du filtre), ou au clic sur la pilule « +N nouveaux
+  topics », réservée aux topics nouveaux — un simple échange de rangs s'applique
+  en silence au prochain retour. Seul l'ordre est figé : compteurs, chaleur et
+  heures des rangées restent vivants. Sans ça, les topics bougent sous le
+  curseur et c'est insupportable en dix secondes. **C'est l'innovation UX
+  centrale : on ne perd jamais sa position dans le flux.**
 - Le topic ouvert est **épinglé visuellement** quoi qu'il arrive à son rang.
 
 ### 7.2 À l'arrivée : un topic chaud pré-ouvert
@@ -525,9 +530,9 @@ laisser la colonne de droite vide.
 
 Raison : la sensation « des gens parlent LÀ, maintenant » est le hook émotionnel
 du produit, et un écran à moitié vide ne la donne pas. Coût assumé : la liste
-est figée d'entrée (puisqu'un topic est ouvert), donc la démonstration du flux
-de gauche est légèrement affaiblie — compensée par les compteurs `+N` qui
-s'incrémentent visiblement.
+ne se réordonne pas d'entrée (l'ordre est figé par défaut, §7.1), donc la
+démonstration du flux de gauche est légèrement affaiblie — compensée par les
+compteurs et les rails de chauffe, qui vivent en direct.
 
 À mesurer dès qu'il y a du trafic : si le taux de fermeture immédiate du topic
 pré-ouvert est élevé, c'est que le choix du topic est mauvais, pas le principe.

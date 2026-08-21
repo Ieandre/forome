@@ -18,24 +18,37 @@
         </div>
         <template v-else>
           <div v-if="displayPosts.length" class="feed__posts" :class="{ 'feed__posts--dense': ambiance }">
-            <PostItem
-              v-for="p in displayPosts"
-              :key="p.id"
-              :post="p"
-              :quoted="quotedById.get(p.id) ?? null"
-              :nevent="neventOf(p.id)"
-              :compact="ambiance"
-              :fresh="liveIds.has(p.id)"
-              :targeted="targetId === p.id"
-              :own="p.pubkey === identity.pubkey"
-              :state="ownState.get(p.id)"
-              :editing="editingId === p.id"
-              @reply="onReplyRequest"
-              @jump="jumpToPost"
-              @edit="editingId = $event"
-              @edit-cancel="editingId = null"
-              @edit-save="saveEdit"
-            />
+            <template v-for="p in displayPosts" :key="p.id">
+              <!-- Le filet de reprise : LE repère qu'un forum doit et qu'un chat
+                   n'a pas. Posé une fois à l'ouverture, il ne suit pas la
+                   lecture — c'est la frontière d'avant l'ouverture, pas un
+                   curseur. -->
+              <div
+                v-if="p.id === unreadMarkId"
+                id="feed-unread"
+                class="feed__unread"
+                role="separator"
+                aria-label="premiers messages depuis ta dernière visite"
+              >
+                depuis ta dernière visite
+              </div>
+              <PostItem
+                :post="p"
+                :quoted="quotedById.get(p.id) ?? null"
+                :nevent="neventOf(p.id)"
+                :compact="ambiance"
+                :fresh="liveIds.has(p.id)"
+                :targeted="targetId === p.id"
+                :own="p.pubkey === identity.pubkey"
+                :state="ownState.get(p.id)"
+                :editing="editingId === p.id"
+                @reply="onReplyRequest"
+                @jump="jumpToPost"
+                @edit="editingId = $event"
+                @edit-cancel="editingId = null"
+                @edit-save="saveEdit"
+              />
+            </template>
           </div>
           <!-- État vide : il explique pourquoi c'est vide, parce qu'ici « vide »
                est une propriété du modèle et non une panne. -->
@@ -95,7 +108,11 @@
  * Le composant à posséder (spec §6, §7.5), et sa machine à états :
  *   - `hooked` (accroché) : true à moins de ~80 px du bas
  *   - tampon de lissage à cadence variable, actif seulement si accroché
- *   - cap DOM dur (~150, ~80 en ambiance)
+ *   - cap DOM dur (~150, ~80 en ambiance), appliqué à TOUT chemin — l'excédent
+ *     vit en réserves mémoire contiguës de part et d'autre de la fenêtre
+ *     (`olderReserve` au-dessus, `newerReserve` en dessous), reprises au scroll
+ *   - atterrissage : permalien > premier non-lu (filet) > haut si jamais
+ *     ouvert > bas si à jour
  *   - correction de scrollTop au chargement d'anciens (piège n°1, §6.2)
  *   - ordre d'arrivée = loi, jamais de réordonnancement de l'affiché
  *
@@ -140,7 +157,11 @@ import { rootIdOf, parentIdOf, neventFor } from '~/utils/nostr'
 import { parseImeta } from '~/utils/media'
 import type { SubHandle } from '~/stores/relays'
 
-const props = defineProps<{ topicId: string }>()
+const props = defineProps<{
+  topicId: string
+  /** `readAt` d'avant ouverture (capturé par `ForumShell`), `null` = jamais ouvert. */
+  unreadSince?: number | null
+}>()
 const emit = defineEmits<{
   /** Le nº local accompagne l'event : le composeur montre « #14 » sans avoir à
       refaire la numérotation, qui n'existe que dans ce fil-ci. */
@@ -160,6 +181,18 @@ const publisher = usePublisher()
 const route = useRoute()
 
 const HISTORY_LIMIT = 300
+/** Rangées gardées au-dessus du point d'atterrissage, pour relire en arrière. */
+const WINDOW_CONTEXT = 40
+/** Tranche rendue au DOM quand le scroll approche du bord de la fenêtre. */
+const RESTORE_CHUNK = 40
+/** Tranche reprise à `olderReserve` par « charger plus ancien ». */
+const OLDER_PAGE = 100
+/** Distance du bas (px) qui déclenche la reprise de `newerReserve`. */
+const RESTORE_ZONE = 600
+/** Distance du haut (px) qui déclenche `loadOlder` sans attendre le clic. */
+const TOP_LOAD_ZONE = 400
+/** Borne mémoire de `olderReserve` — au-delà, les relais restent la source. */
+const OLDER_RESERVE_MAX = 600
 
 type LoadedPost = Omit<Post, 'index'>
 
@@ -201,6 +234,19 @@ let targetTimer: ReturnType<typeof setTimeout> | null = null
 
 let buffer: LoadedPost[] = []
 let backlog: LoadedPost[] = []
+/**
+ * Les réserves : ce qui est chargé mais hors fenêtre DOM, contigu à elle.
+ * `olderReserve` juste au-dessus (ordre croissant), `newerReserve` juste en
+ * dessous — et `backlog`, plus récent que tout, vient après elle. C'est ce qui
+ * borne le DOM au cap quel que soit le point de lecture, sans repasser par les
+ * relais pour ce qu'on a déjà.
+ */
+let olderReserve: LoadedPost[] = []
+let newerReserve: LoadedPost[] = []
+/** true si les relais ont encore de l'historique au-delà de ce qu'on tient. */
+let moreOnRelay = false
+/** Premier message postérieur à la dernière visite — le filet se pose devant lui. */
+const unreadMarkId = ref<string | null>(null)
 let releaseTimer: ReturnType<typeof setTimeout> | null = null
 let releaseStamps: number[] = []
 let subs: SubHandle[] = []
@@ -310,6 +356,10 @@ function jumpToPost(id: string): void {
   // donc `prefers-reduced-motion` se lit ici à la main.
   const smooth = !window.matchMedia('(prefers-reduced-motion: reduce)').matches
   el.scrollIntoView({ block: 'center', behavior: smooth ? 'smooth' : 'auto' })
+  flashTarget(id)
+}
+
+function flashTarget(id: string): void {
   targetId.value = id
   if (targetTimer) clearTimeout(targetTimer)
   targetTimer = setTimeout(() => (targetId.value = null), 1600)
@@ -428,10 +478,10 @@ function applyRevision(anchorId: string): boolean {
     return true
   }
 
-  // Pas encore à l'écran : le tampon et l'arriéré tiennent des rangées qui n'ont
-  // pas encore été posées, et il faut les corriger là aussi — sinon la version
-  // périmée s'afficherait au moment de la libération.
-  for (const list of [buffer, backlog]) {
+  // Pas encore à l'écran : le tampon, l'arriéré et les réserves tiennent des
+  // rangées qui n'ont pas encore été posées, et il faut les corriger là aussi —
+  // sinon la version périmée s'afficherait au moment de la reprise.
+  for (const list of [buffer, backlog, olderReserve, newerReserve]) {
     const j = list.findIndex((p) => p.id === anchorId)
     if (j !== -1) {
       list[j] = toPost(anchor, list[j]!.topicId, list[j]!.root)
@@ -500,19 +550,43 @@ function scrollToBottom(): void {
   el.scrollTop = el.scrollHeight
 }
 
+/** Range en réserve haute des rangées évincées de la fenêtre, borne comprise. */
+function stashOlder(dropped: LoadedPost[]): void {
+  olderReserve.push(...dropped)
+  if (olderReserve.length > OLDER_RESERVE_MAX) {
+    olderReserve.splice(0, olderReserve.length - OLDER_RESERVE_MAX)
+    // ce qu'on jette reste sur les relais : « charger plus ancien » le refetch
+    moreOnRelay = true
+  }
+}
+
+/** Évince l'excédent du haut de la fenêtre. `true` s'il y a eu éviction. */
+function trimTop(): boolean {
+  const cap = domCap()
+  if (posts.value.length <= cap) return false
+  const dropped = posts.value.splice(0, posts.value.length - cap)
+  stashOlder(dropped)
+  // le cap DOM ne doit pas renuméroter ce qui reste affiché
+  baseOffset.value += dropped.length
+  hasOlder.value = true
+  return true
+}
+
+/** Évince l'excédent du bas de la fenêtre vers la réserve du dessous. */
+function trimBottom(): void {
+  const cap = domCap()
+  if (posts.value.length <= cap) return
+  const evicted = posts.value.splice(cap)
+  newerReserve = [...evicted, ...newerReserve]
+  triggerRef(posts)
+}
+
 function appendToDom(p: LoadedPost, opts: { trackRate?: boolean } = {}): void {
   liveIds.value.add(p.id)
   posts.value.push(p)
   if (opts.trackRate !== false) trackRate()
   if (hooked.value) {
-    const cap = domCap()
-    if (posts.value.length > cap) {
-      const dropped = posts.value.length - cap
-      posts.value.splice(0, dropped)
-      // le cap DOM ne doit pas renuméroter ce qui reste affiché
-      baseOffset.value += dropped
-      hasOlder.value = true
-    }
+    trimTop()
     void nextTick(scrollToBottom)
   }
   triggerRef(posts)
@@ -528,7 +602,16 @@ function scheduleRelease(): void {
   const tick = (): void => {
     releaseTimer = null
     const p = buffer.shift()
-    if (p) appendToDom(p)
+    if (p) {
+      // Décroché entre la mise en tampon et la libération : la rangée rejoint
+      // l'arriéré. La poser quand même casserait la contiguïté fenêtre →
+      // `newerReserve` → `backlog`, et la reprise rendrait le fil en désordre.
+      if (hooked.value) appendToDom(p)
+      else {
+        backlog.push(p)
+        pendingCount.value++
+      }
+    }
     if (buffer.length > 0) releaseTimer = setTimeout(tick, cadenceFor(buffer.length))
   }
   releaseTimer = setTimeout(tick, cadenceFor(buffer.length))
@@ -536,7 +619,11 @@ function scheduleRelease(): void {
 
 function known(id: string): boolean {
   return (
-    posts.value.some((x) => x.id === id) || buffer.some((x) => x.id === id) || backlog.some((x) => x.id === id)
+    posts.value.some((x) => x.id === id) ||
+    buffer.some((x) => x.id === id) ||
+    backlog.some((x) => x.id === id) ||
+    olderReserve.some((x) => x.id === id) ||
+    newerReserve.some((x) => x.id === id)
   )
 }
 
@@ -621,17 +708,104 @@ async function fetchReplies(until?: number): Promise<RepliesPage> {
   }
 }
 
+/**
+ * Où le fil s'ouvre. Priorités : une ancre `#msg-<id>` dans l'URL (permalien,
+ * notification) vise son message ; un topic déjà visité s'ouvre sur le premier
+ * message non lu, marqué du filet ; un topic jamais ouvert s'ouvre en haut, sur
+ * le premier message — le code forum, on lit un fil depuis son début ; et le
+ * bas (le direct) n'est l'atterrissage que du lecteur à jour. Avant, tout le
+ * monde tombait en bas : le lecteur qui revenait avait ses non-lus au-dessus de
+ * lui, sans repère.
+ */
+type Landing = { kind: 'top' } | { kind: 'bottom' } | { kind: 'hash' | 'unread'; id: string }
+
+function resolveLanding(all: LoadedPost[], firstUnread: LoadedPost | null): Landing {
+  const hash = route.hash
+  if (hash.startsWith('#msg-')) {
+    const id = hash.slice(5)
+    if (all.some((p) => p.id === id)) return { kind: 'hash', id }
+  }
+  if (firstUnread) return { kind: 'unread', id: firstUnread.id }
+  if (props.unreadSince == null) return { kind: 'top' }
+  return { kind: 'bottom' }
+}
+
+/**
+ * Fenêtre DOM autour du point d'atterrissage. Le cap (§6.2) s'applique donc
+ * aussi au chargement initial — il ne tenait que le chemin live, et un topic de
+ * 400 messages montait 300 rangées d'un coup. L'excédent part en réserves, d'où
+ * `loadOlder` et `restoreDown` le reprennent sans retourner aux relais.
+ */
+function applyWindow(all: LoadedPost[], landing: Landing): void {
+  const cap = domCap()
+  let start: number
+  if (landing.kind === 'bottom') start = Math.max(0, all.length - cap)
+  else if (landing.kind === 'top') start = 0
+  else {
+    const i = all.findIndex((p) => p.id === landing.id)
+    start = Math.max(0, Math.min(i - WINDOW_CONTEXT, all.length - cap))
+  }
+  const end = Math.min(all.length, start + cap)
+  olderReserve = all.slice(0, start)
+  newerReserve = all.slice(end)
+  posts.value = all.slice(start, end)
+  baseOffset.value = start
+  hooked.value = landing.kind === 'bottom'
+  hasOlder.value = olderReserve.length > 0 || moreOnRelay
+  // Le tampon tient du live, plus récent que tout : si la fenêtre ne se termine
+  // pas au direct, il rejoint l'arriéré au lieu du DOM (contiguïté, voir
+  // `scheduleRelease`).
+  if (!hooked.value && buffer.length > 0) {
+    backlog.push(...buffer)
+    pendingCount.value += buffer.length
+    buffer = []
+  }
+}
+
+/** Positionnement instantané de l'ouverture : on arrive SUR le message, on n'y voyage pas. */
+function positionAt(selector: string, align: 'start' | 'center'): void {
+  const el = containerEl.value
+  const row = el?.querySelector<HTMLElement>(selector)
+  if (!el || !row) return
+  const delta = row.getBoundingClientRect().top - el.getBoundingClientRect().top
+  el.scrollTop += align === 'center' ? delta - (el.clientHeight - row.getBoundingClientRect().height) / 2 : delta - 10
+}
+
+function settleLanding(landing: Landing): void {
+  const place = (): void => {
+    if (landing.kind === 'hash') positionAt(`[id="msg-${landing.id}"]`, 'center')
+    else if (landing.kind === 'unread') positionAt('[id="feed-unread"]', 'start')
+    else if (landing.kind === 'top') {
+      if (containerEl.value) containerEl.value.scrollTop = 0
+    } else scrollToBottom()
+  }
+  place()
+  if (landing.kind === 'hash') flashTarget(landing.id)
+  // Deux temps : `content-visibility` estime les hauteurs hors écran, et la
+  // première pose peut retomber à côté une fois les rangées visibles vraiment
+  // rendues. Puis `onScroll` relit l'accrochage dans la géométrie réelle — un
+  // fil plus court que l'écran atterrit « en haut » ET au contact du direct.
+  requestAnimationFrame(() => {
+    place()
+    onScroll()
+  })
+}
+
 async function loadInitial(): Promise<void> {
   loadingInitial.value = true
   posts.value = []
   baseOffset.value = 0
   buffer = []
   backlog = []
+  olderReserve = []
+  newerReserve = []
+  moreOnRelay = false
   pendingCount.value = 0
   hooked.value = true
   hasOlder.value = false
   ambiance.value = false
   liveIds.value = new Set()
+  unreadMarkId.value = null
   eventById.clear()
   neventCache.clear()
   quoteCache.clear()
@@ -640,6 +814,7 @@ async function loadInitial(): Promise<void> {
   // topic suivant — un autre message, un autre auteur.
   editingId.value = null
 
+  let landing: Landing = { kind: 'bottom' }
   try {
     if (isFirehose.value) {
       // pas d'historique : le flux global n'a pas de racine à charger
@@ -661,55 +836,77 @@ async function loadInitial(): Promise<void> {
     // disparaître définitivement — `known()` le croyait connu, donc l'écho du
     // relais ne le remettait pas. On garde donc ce qui est arrivé, à la fin,
     // puisque c'est le plus récent.
-    const known = new Set(out.map((p) => p.id))
-    const live = posts.value.filter((p) => !known.has(p.id))
-    posts.value = live.length > 0 ? [...out, ...live] : out
-    hasOlder.value = replies.received >= HISTORY_LIMIT
+    const knownIds = new Set(out.map((p) => p.id))
+    const live = posts.value.filter((p) => !knownIds.has(p.id))
+    const all = live.length > 0 ? [...out, ...live] : out
+    moreOnRelay = replies.received >= HISTORY_LIMIT
+
+    const since = props.unreadSince
+    const firstUnread = since != null ? all.find((p) => !p.root && p.createdAt > since) ?? null : null
+    unreadMarkId.value = firstUnread?.id ?? null
+    landing = resolveLanding(all, firstUnread)
+    applyWindow(all, landing)
   } finally {
     loadingInitial.value = false
   }
   await nextTick()
-  // Une ancre `#msg-<id>` dans l'URL vise un message précis : c'est ce que copie
-  // le bouton « permalien » et ce que produit une notification. Sans ce
-  // traitement, le lien ouvrait bien le topic mais atterrissait en bas du fil —
-  // le message visé pouvant être 140 rangées plus haut, ça revient à ne pas
-  // avoir amené le lecteur. L'ancrage natif du navigateur ne peut rien ici : le
-  // fil est chargé après le rendu de la page.
-  if (!jumpToHash()) scrollToBottom()
+  settleLanding(landing)
 }
 
 /**
- * Vise le message de l'ancre, s'il est dans la fenêtre chargée. Retourne `false`
- * quand il n'y a pas d'ancre ou que le message est plus ancien que ce que le fil
- * garde — auquel cas l'appelant reprend le comportement normal plutôt que de
- * laisser le lecteur sur un écran figé sans explication.
+ * Fige à l'écran la première rangée visible pendant une mutation qui change la
+ * hauteur autour d'elle — piège n°1 (§6.2). Par rectangles, comme
+ * `scrollGuardFor`, mais mesuré sur UNE rangée plutôt qu'en `scrollHeight` :
+ * une même opération peut désormais insérer en haut ET évincer en bas, et la
+ * somme des deux fausserait la différence de hauteur totale.
  */
-function jumpToHash(): boolean {
-  const hash = route.hash
-  if (!hash.startsWith('#msg-')) return false
-  const id = hash.slice(5)
-  if (!posts.value.some((p) => p.id === id)) return false
-  jumpToPost(id)
-  return true
+function holdFirstVisible(): () => Promise<void> {
+  const el = containerEl.value
+  if (!el) return async () => {}
+  const top = el.getBoundingClientRect().top
+  let anchor: HTMLElement | null = null
+  for (const row of el.querySelectorAll<HTMLElement>('.msg')) {
+    if (row.getBoundingClientRect().bottom > top) {
+      anchor = row
+      break
+    }
+  }
+  if (!anchor) return async () => {}
+  const before = anchor.getBoundingClientRect().top
+  return async () => {
+    await nextTick()
+    el.scrollTop += anchor!.getBoundingClientRect().top - before
+  }
 }
 
 async function loadOlder(): Promise<void> {
   if (loadingOlder.value || !hasOlder.value || posts.value.length === 0) return
-  const el = containerEl.value
-  if (!el) return
   loadingOlder.value = true
-  const oldest = posts.value.find((p) => !p.root)?.createdAt ?? posts.value[0]!.createdAt
-  const prevHeight = el.scrollHeight
   try {
+    // La réserve d'abord : ces rangées sont déjà là, aucun aller aux relais.
+    if (olderReserve.length > 0) {
+      const chunk = olderReserve.splice(-OLDER_PAGE)
+      const hold = holdFirstVisible()
+      posts.value = [...chunk, ...posts.value]
+      baseOffset.value = Math.max(0, baseOffset.value - chunk.length)
+      trimBottom()
+      hasOlder.value = olderReserve.length > 0 || moreOnRelay
+      await hold()
+      return
+    }
+    const oldest = posts.value.find((p) => !p.root)?.createdAt ?? posts.value[0]!.createdAt
     const page = await fetchReplies(oldest - 1)
     const older = page.posts.filter((p) => !known(p.id))
+    moreOnRelay = page.received >= HISTORY_LIMIT
     if (older.length === 0) {
-      hasOlder.value = page.received >= HISTORY_LIMIT
+      hasOlder.value = moreOnRelay
       // Une page entièrement faite de corrections : rien à insérer, mais les
       // messages déjà affichés qu'elles visent doivent être mis à jour.
       for (const id of page.revised) applyRevision(id)
       return
     }
+    // Mesuré après l'attente réseau : le lecteur a pu défiler entre-temps.
+    const hold = holdFirstVisible()
     const rootIdx = posts.value.findIndex((p) => p.root)
     if (rootIdx === 0) {
       posts.value = [posts.value[0]!, ...older, ...posts.value.slice(1)]
@@ -718,9 +915,9 @@ async function loadOlder(): Promise<void> {
     }
     // on a découvert du plus ancien : la numérotation locale se décale (§6.4)
     baseOffset.value = Math.max(0, baseOffset.value - older.length)
-    await nextTick()
-    // Piège n°1 (§6.2) : mesurer scrollHeight avant/après, corriger scrollTop.
-    el.scrollTop += el.scrollHeight - prevHeight
+    trimBottom()
+    hasOlder.value = moreOnRelay
+    await hold()
     // Après la correction de défilement, et une par une : chaque révision qui
     // touche une rangée déjà affichée porte sa propre compensation.
     for (const id of page.revised) applyRevision(id)
@@ -729,16 +926,47 @@ async function loadOlder(): Promise<void> {
   }
 }
 
+/**
+ * L'inverse de `loadOlder` : à l'approche du bas de la fenêtre, la réserve du
+ * dessous revient au DOM par tranches, et le cap évince autant en haut. C'est
+ * ce qui permet d'atterrir au premier non-lu d'un gros topic puis de lire
+ * jusqu'au direct sans que le DOM enfle.
+ */
+function restoreDown(): void {
+  if (newerReserve.length === 0) return
+  const chunk = newerReserve.splice(0, RESTORE_CHUNK)
+  const willTrim = posts.value.length + chunk.length > domCap()
+  const hold = willTrim ? holdFirstVisible() : null
+  posts.value.push(...chunk)
+  trimTop()
+  triggerRef(posts)
+  if (hold) void hold()
+}
+
 function onScroll(): void {
   const el = containerEl.value
   if (!el) return
   const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+  if (!hooked.value && distanceFromBottom < RESTORE_ZONE) restoreDown()
+  // l'ancien se recharge à l'approche du haut, sans attendre le clic
+  if (el.scrollTop < TOP_LOAD_ZONE && hasOlder.value && !loadingOlder.value && !loadingInitial.value) {
+    void loadOlder()
+  }
   const wasHooked = hooked.value
-  hooked.value = distanceFromBottom < 80
-  if (hooked.value && !wasHooked) flushBacklog()
+  // Tant que la réserve du dessous n'est pas vide, le bas de la fenêtre n'est
+  // PAS le direct : s'y accrocher téléporterait le lecteur par-dessus ses
+  // non-lus (`flushDown` vide tout).
+  hooked.value = distanceFromBottom < 80 && newerReserve.length === 0
+  if (hooked.value && !wasHooked) flushDown()
 }
 
-function flushBacklog(): void {
+/** Ramène tout ce qui vit sous la fenêtre (réserve puis arriéré) au DOM. */
+function flushDown(): void {
+  const added = newerReserve.length + backlog.length
+  if (newerReserve.length > 0) {
+    posts.value.push(...newerReserve)
+    newerReserve = []
+  }
   if (backlog.length > 0) {
     for (const p of backlog) {
       liveIds.value.add(p.id)
@@ -747,19 +975,14 @@ function flushBacklog(): void {
     backlog = []
   }
   pendingCount.value = 0
-  const cap = domCap()
-  if (posts.value.length > cap) {
-    const dropped = posts.value.length - cap
-    posts.value.splice(0, dropped)
-    baseOffset.value += dropped
-    hasOlder.value = true
-  }
+  trimTop()
   triggerRef(posts)
+  if (added > 0) void nextTick(scrollToBottom)
 }
 
 function jumpToLive(): void {
   hooked.value = true
-  flushBacklog()
+  flushDown()
   void nextTick(scrollToBottom)
 }
 
@@ -791,10 +1014,21 @@ function onReplyRequest(id: string): void {
  */
 function dropPost(id: string): void {
   const i = posts.value.findIndex((p) => p.id === id)
-  if (i === -1) return
-  posts.value.splice(i, 1)
-  triggerRef(posts)
-  forget(id)
+  if (i !== -1) {
+    posts.value.splice(i, 1)
+    triggerRef(posts)
+    forget(id)
+    return
+  }
+  // La rangée a pu être évincée de la fenêtre entre-temps : elle est en réserve.
+  for (const list of [buffer, backlog, olderReserve, newerReserve]) {
+    const j = list.findIndex((p) => p.id === id)
+    if (j !== -1) {
+      list.splice(j, 1)
+      forget(id)
+      return
+    }
+  }
 }
 
 /** Oublie tout ce qu'un id traînait, sans toucher à la liste affichée. */
@@ -843,7 +1077,10 @@ function pushOwnPost(ev: NostrEvent, replacedId?: string): void {
     dropPost(replacedId)
   }
   if (known(ev.id)) return
+  // Poster ramène au direct : tout ce qui vivait sous la fenêtre repasse au DOM
+  // d'abord, pour que son message arrive bien APRÈS tout le reste.
   hooked.value = true
+  flushDown()
   appendToDom(toPost(ev, props.topicId), { trackRate: false })
 }
 
@@ -1032,6 +1269,34 @@ watch(
 }
 .feed__posts--dense :deep(.msg--compact:nth-child(even)) {
   background: var(--surface-2);
+}
+
+/* Le filet de reprise : trait court, étiquette, trait long. Orange en accent —
+   c'est un repère de lecture, pas un contrôle, donc jamais un bouton. */
+.feed__unread {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 7px 0 4px;
+  color: var(--brand-ink);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  white-space: nowrap;
+}
+.feed__unread::before,
+.feed__unread::after {
+  content: '';
+  height: 1px;
+  background: currentColor;
+  opacity: 0.45;
+}
+.feed__unread::before {
+  width: 18px;
+}
+.feed__unread::after {
+  flex: 1;
 }
 
 .feed__loading-older,

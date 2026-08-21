@@ -744,6 +744,13 @@ function copyPermalink(): void {
   border: 1px solid var(--line-soft);
   border-radius: 12px;
   box-shadow: var(--elev-1);
+  /* Le navigateur saute layout et paint des rangées hors écran : c'est ce qui
+     rend les ~150 rangées du cap gratuites au scroll, sans virtualisation
+     (§6.2). `auto` en taille : l'estimation initiale est remplacée par la
+     hauteur réellement mesurée dès qu'une rangée a été rendue une fois, donc
+     les corrections de scrollTop du fil restent justes en revenant dessus. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 90px;
 }
 
 /* Liseré de statut. Transparent par défaut : la grande majorité des messages

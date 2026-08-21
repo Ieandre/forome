@@ -39,7 +39,7 @@
 
       <TopicModeration v-if="modPanel && openTopicId" :topic-id="openTopicId" @close="modPanel = false" />
 
-      <PostFeed ref="feedEl" :topic-id="openTopicId" @reply="onReplyRequest" />
+      <PostFeed ref="feedEl" :topic-id="openTopicId" :unread-since="unreadSince" @reply="onReplyRequest" />
 
       <!-- Le flux global est un mode de test de débit, pas un topic : on n'y
            publie pas (il n'a pas de racine à laquelle rattacher une réponse). -->
@@ -214,10 +214,19 @@ const title = computed(() => {
 const rootAuthor = computed(() => root.value?.pubkey ?? row.value?.pubkey ?? null)
 const lockNotice = computed(() => (props.openTopicId ? mod.lockNotice(props.openTopicId) : null))
 
+/**
+ * `readAt` tel qu'il était AVANT d'ouvrir ce topic : c'est lui qui dit où le
+ * fil pose le filet « depuis ta dernière visite ». Capturé ici et pas lu par le
+ * fil directement, parce que `markRead` (plus bas) écrase la valeur dès
+ * l'ouverture — ce watcher est enregistré avant lui, l'ordre compte.
+ */
+const unreadSince = ref<number | null>(null)
+
 watch(
   () => props.openTopicId,
   (id) => {
     clearReply()
+    unreadSince.value = id ? reading.readAt[id] ?? null : null
     if (id && id !== FIREHOSE_TOPIC_ID) void topicStore.fetchRoot(id)
   },
   { immediate: true },

@@ -90,20 +90,40 @@
 
           <!-- Aucun état d'attente ici : la colonne de gauche porte déjà le
                squelette, les relais injoignables et le forum vide. Ce texte ne
-               dépend d'aucune donnée, donc il s'affiche dès le premier rendu. -->
+               dépend d'aucune donnée, donc il s'affiche dès le premier rendu.
+
+               Il ne décrit PAS l'écran. La version précédente expliquait la mise
+               en page — la liste est à gauche, le topic s'ouvre ici, sans
+               recharger — c'est-à-dire la plomberie d'une SPA, que deux secondes
+               d'usage apprennent mieux qu'un paragraphe. C'est la seule surface
+               où le forum peut dire ce qu'il EST avant qu'on ait cliqué : elle
+               porte donc les trois propriétés, chacune avec le mécanisme qui la
+               rend vraie, parce qu'une propriété sans son mécanisme est un
+               slogan. Rien de l'ancien texte n'est repris : l'ordre de la liste
+               se voit dans la liste. -->
           <div class="wel__body">
-            <h2 class="wel__title display">Tout se passe à gauche.</h2>
+            <h2 class="wel__title display">Ce que tu écris ici, personne ne peut le retirer.</h2>
             <p class="wel__lead">
-              La liste est classée par ce qui bouge maintenant, pas par ce qui vient d'arriver.
-              Choisis un topic : il s'ouvre ici même, en direct, sans jamais recharger la page.
+              Il n'y a pas de serveur qui nous appartienne. Ton message est signé par ta clé, puis
+              recopié sur des relais indépendants qui en gardent chacun leur copie : nous pouvons
+              cesser d'en servir un, le faire disparaître du réseau, non.
             </p>
             <p class="wel__lead">
-              Tu peux répondre dans la foulée. Ton navigateur t'a fabriqué un pseudo en arrivant —
-              il n'y a ni compte, ni mot de passe, ni adresse à donner.
+              Il n'y a pas de compte non plus. Ton navigateur t'a fabriqué une clé en arrivant — elle
+              est ton identité, ici comme dans n'importe quel autre client Nostr. Ni mot de passe, ni
+              adresse à donner : tu peux répondre tout de suite.
+            </p>
+            <!-- Conditionnée comme dans `UserMenu` : sans clé racine épinglée, ce
+                 client n'applique la décision de personne, et il n'y a donc aucune
+                 modération dont annoncer la transparence. -->
+            <p v-if="mod.configured" class="wel__lead">
+              Et ce qu'on masque, on le dit : chaque décision de modération est un message signé,
+              avec son motif, que tout le monde peut relire.
             </p>
             <div class="wel__actions">
               <NuxtLink to="/new" class="btn btn--primary">Nouveau topic</NuxtLink>
               <NuxtLink to="/comment-ca-marche" class="wel__more">Comment ça marche</NuxtLink>
+              <NuxtLink v-if="mod.configured" to="/moderation" class="wel__more">Qui modère ici</NuxtLink>
             </div>
           </div>
         </article>
@@ -367,19 +387,28 @@ async function copyPermalink(): Promise<void> {
 /* ------------------------------------------------------------ écran d'accueil
    L'écran le plus regardé de l'app à froid : c'est lui qui dit ce qu'est
    l'endroit avant qu'on ait cliqué. Il a donc droit au display et à de l'air. */
-/* Bloc calé à gauche du panneau et non centré : « tout se passe à gauche » se
-   dit aussi par la position, et un pavé centré au milieu d'une colonne de 70 %
-   ne pointe vers rien. */
+/* Bloc calé à gauche du panneau et non centré : il se lit comme la tête d'un
+   fil, et un fil commence au bord de sa gouttière — un pavé centré au milieu
+   d'une colonne de 70 % ne s'accroche à rien.
+
+   Colonne qui défile, et pas un centrage en ligne : centrer sur l'axe transverse
+   rogne les deux bouts dès que le contenu dépasse, et le défilement ne les
+   rattrape pas. Le texte d'accueil dépasse sur un écran court et large (petit
+   portable, fenêtre partagée), là où le panneau est encore rendu — sous 820 px
+   c'est la liste qui prend la place. La marge auto de `.wel` centre quand ça
+   tient et tombe à 0 quand ça ne tient pas. */
 .shell__welcome {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   height: 100%;
+  overflow-y: auto;
   padding: 24px 32px 24px 22px;
 }
 
 /* Le liseré de racine et la gouttière de `.msg` : c'est ce qui fait lire
    l'accueil comme la tête d'un fil plutôt que comme une page à part. */
 .wel {
+  margin-block: auto;
   display: grid;
   grid-template-columns: 3px 1fr;
   grid-template-areas:
@@ -453,14 +482,20 @@ async function copyPermalink(): Promise<void> {
 .wel__actions {
   animation: wel-rise 0.42s cubic-bezier(0.22, 0.61, 0.36, 1) both;
 }
+/* Les délais suivent l'ordre de lecture. Le troisième paragraphe est
+   conditionnel : quand il manque, la rangée d'actions se lève simplement 60 ms
+   plus tôt que son voisin — il n'y a pas de trou à combler. */
 .wel__lead:nth-of-type(1) {
   animation-delay: 0.06s;
 }
 .wel__lead:nth-of-type(2) {
   animation-delay: 0.12s;
 }
-.wel__actions {
+.wel__lead:nth-of-type(3) {
   animation-delay: 0.18s;
+}
+.wel__actions {
+  animation-delay: 0.24s;
 }
 @keyframes wel-rise {
   from {

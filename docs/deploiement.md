@@ -172,6 +172,14 @@ existante. C'est lui qui écrit `web.env`, donc lui qui fixe l'hôte : rien n'es
 codé en dur dans le dépôt, et `healthcheck.sh` relit ce fichier plutôt que de
 supposer un domaine.
 
+Deux fichiers vivent hors du dépôt et sont **dérivés** de lui, pas copiés : la
+config du relais (`~/forome-data/strfry.conf`, écrite par
+[`deploy/render-relay-conf.sh`](../deploy/render-relay-conf.sh), qui y résout
+`__HOST__` pour l'AUTH NIP-42) et le `Caddyfile`. Le premier est régénéré à
+**chaque** déploiement, pas seulement à la mise en service : `update.sh` ne
+rejoue pas `install.sh`, donc une unité systemd qui pointe un fichier dérivé
+sans que rien ne l'écrive laisse le relais en boucle de relance.
+
 ## Sauvegardes
 
 `forome-backup.timer` lance [`deploy/backup.sh`](../deploy/backup.sh) une fois

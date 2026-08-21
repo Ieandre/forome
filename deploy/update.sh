@@ -28,6 +28,13 @@ npm ci
 set -a; source "$DATA/web.env"; set +a
 npm run build
 
+# AVANT le redémarrage, et pas seulement dans install.sh : l'unité systemd
+# exécute une config dérivée (`~/forome-data/strfry.conf`), et install.sh ne se
+# rejoue pas sur une VM en service. Sans cette ligne, un déploiement installait
+# une unité pointant un fichier jamais écrit — strfry en boucle de relance, port
+# muet, et `is-active` qui l'attrape entre deux et annonce « OK ».
+bash "$ROOT/deploy/render-relay-conf.sh"
+
 sudo cp "$ROOT"/deploy/systemd/*.service "$ROOT"/deploy/systemd/*.timer /etc/systemd/system/
 sudo systemctl daemon-reload
 # Aussi ici, et pas seulement dans install.sh : install.sh ne se rejoue pas sur

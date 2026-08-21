@@ -97,8 +97,17 @@ Le piège est ailleurs : `auth.serviceUrl` vide, strfry **réclame une AUTH qu'i
 ne peut pas valider**, et il n'annonce même pas le NIP 42 dans son document
 NIP-11. Vu du client, les MP partaient (2/2 emballages acceptés) et ne
 revenaient jamais. D'où `serviceUrl` dans nos deux configs — `ws://localhost:7778`
-en dev, `wss://__HOST__/relay` en prod, résolu par `install.sh`. Seul `hôte:port`
-est comparé : le schéma et le chemin sont ignorés des deux côtés.
+en dev, `wss://__HOST__/relay` en prod. Seul `hôte:port` est comparé : le schéma
+et le chemin sont ignorés des deux côtés.
+
+⚠️ En prod, `deploy/strfry.conf` est donc un **gabarit** : le service exécute
+`~/forome-data/strfry.conf`, écrit par `deploy/render-relay-conf.sh`. Les deux
+chemins de déploiement l'appellent, `install.sh` **et** `update.sh` — et ce n'est
+pas une précaution. Quand seul install.sh le faisait, un déploiement ordinaire
+installait l'unité systemd pointant la config dérivée sans jamais l'écrire :
+strfry repartait en boucle sur un fichier absent, et `systemctl is-active`
+l'attrapait entre deux relances pour annoncer « OK » pendant que le port ne
+répondait pas. C'est le port, pas le service, qui dit qu'un relais est debout.
 
 Second piège, côté client : strfry préfixe la raison du CLOSED par
 `ERROR: auth-required: …`, alors que la reprise automatique de `nostr-tools`

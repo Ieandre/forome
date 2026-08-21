@@ -5,12 +5,7 @@
     <template v-else-if="openTopicId">
       <header class="topic-head">
         <div class="topic-head__col">
-          <Hint text="retour à la liste" placement="bottom">
-            <button type="button" class="topic-head__back" @click="closeTopic">
-              <span aria-hidden="true">←</span>
-              <span class="visually-hidden">retour à la liste</span>
-            </button>
-          </Hint>
+          <BackButton label="retour à la liste" @click="closeTopic" />
 
           <UserAvatar v-if="rootAuthor" :pubkey="rootAuthor" :size="26" class="topic-head__av" />
 
@@ -156,7 +151,7 @@ const profiles = useProfileStore()
 const mod = useModerationStore()
 const reading = useReadingStore()
 const router = useRouter()
-const copied = ref(false)
+const { copied, copy } = useCopy()
 const modPanel = ref(false)
 const replyTo = ref<NostrEvent | null>(null)
 const feedEl = ref<{
@@ -238,14 +233,8 @@ function closeTopic(): void {
   void router.push('/')
 }
 
-async function copyPermalink(): Promise<void> {
-  try {
-    await navigator.clipboard.writeText(window.location.href)
-    copied.value = true
-    setTimeout(() => (copied.value = false), 1500)
-  } catch {
-    /* presse-papier indisponible — pas bloquant */
-  }
+function copyPermalink(): void {
+  void copy(window.location.href)
 }
 </script>
 
@@ -299,20 +288,6 @@ async function copyPermalink(): Promise<void> {
   gap: 14px;
   max-width: var(--topic-col, 880px);
   margin: 0 auto;
-}
-.topic-head__back {
-  display: none;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--r-control);
-  color: var(--ink-2);
-  padding: 5px 11px;
-  font-size: var(--fs-lg);
-  line-height: 1.2;
-  flex-shrink: 0;
-}
-.topic-head__back:hover {
-  background: var(--surface-3);
 }
 .topic-head__av {
   flex-shrink: 0;
@@ -545,9 +520,6 @@ async function copyPermalink(): Promise<void> {
   .topic-foot {
     padding-left: 14px;
     padding-right: 14px;
-  }
-  .topic-head__back {
-    display: block;
   }
   .topic-head__av {
     display: none;

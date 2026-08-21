@@ -6,12 +6,7 @@
          où la liste est masquée. -->
     <header class="nt__head">
       <div class="nt__col nt__head-col">
-        <Hint text="retour à la liste" placement="bottom">
-          <button type="button" class="nt__back" @click="leave">
-            <span aria-hidden="true">←</span>
-            <span class="visually-hidden">retour à la liste</span>
-          </button>
-        </Hint>
+        <BackButton label="retour à la liste" @click="leave" />
 
         <UserAvatar v-if="identity.pubkey" :pubkey="identity.pubkey" :size="26" class="nt__av" />
 
@@ -295,20 +290,6 @@ async function submit(): Promise<void> {
   align-items: center;
   gap: 14px;
 }
-.nt__back {
-  display: none;
-  flex-shrink: 0;
-  padding: 5px 11px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--r-control);
-  color: var(--ink-2);
-  font-size: var(--fs-lg);
-  line-height: 1.2;
-}
-.nt__back:hover {
-  background: var(--surface-3);
-}
 .nt__av {
   flex-shrink: 0;
 }
@@ -499,12 +480,7 @@ async function submit(): Promise<void> {
   margin-left: auto;
 }
 
-/* Sous 820px la liste disparaît : le retour de l'en-tête est le seul chemin
-   vers elle qui ne passe pas par « Annuler ». */
 @media (max-width: 820px) {
-  .nt__back {
-    display: block;
-  }
   .nt__head {
     padding-inline: 14px;
   }

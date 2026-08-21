@@ -2,10 +2,7 @@
   <section class="dm__thread">
     <template v-if="peer">
       <header class="dm__head">
-        <button type="button" class="dm__back" @click="closeThread">
-          <span aria-hidden="true">←</span>
-          <span class="visually-hidden">retour aux conversations</span>
-        </button>
+        <BackButton label="retour aux conversations" @click="closeThread" />
         <UserAvatar :pubkey="peer" :size="26" />
         <div class="dm__who">
           <NuxtLink :to="`/profil/${peerNpub}`" class="dm__who-name">
@@ -608,25 +605,8 @@ watch(
 }
 
 /* Le retour n'existe qu'en colonne unique : au large, la liste est là. */
-.dm__back {
-  display: none;
-  flex-shrink: 0;
-  padding: 2px 9px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--r-control);
-  color: var(--ink-2);
-  font-size: var(--fs-lg);
-  line-height: 1.3;
-}
-.dm__back:hover {
-  background: var(--surface-3);
-}
 
 @media (max-width: 820px) {
-  .dm__back {
-    display: block;
-  }
   .dmsg__bubble {
     max-width: 84%;
   }

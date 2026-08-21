@@ -9,6 +9,9 @@ lit les messages et y publie les tiens, signés par une clé qui n'existe que da
 ton navigateur. Il n'y a rien à administrer qui puisse décider, un jour, de ce
 que le forum a le droit de contenir.
 
+Tout le code est ici, sous licence libre [AGPL-3.0](LICENSE) : ce forum se relit,
+se modifie et se réhéberge, par n'importe qui.
+
 ## Pourquoi ça change quelque chose
 
 Sur un forum classique, un message vit à un seul endroit — la base de données de
@@ -208,3 +211,14 @@ et pas du code :
    ([`packages/relay-policy`](packages/relay-policy)), partagée par le relais,
    le relais de dev et l'indexeur. Deux copies d'une règle de sécurité finissent
    toujours par diverger.
+
+## Licence
+
+**Logiciel libre**, sous [GNU AGPL-3.0](LICENSE) — Copyright (C) 2026 les
+contributeurs de Forome.
+
+Lire, modifier, héberger, ouvrir son propre forum : tout est permis. La seule
+contrepartie est celle qui compte ici — **qui héberge une version modifiée en
+publie les sources**. Un forum dont le code serait invérifiable ne pourrait rien
+promettre à ses lecteurs ; la licence est ce qui étend cette promesse aux
+instances que nous ne tenons pas.

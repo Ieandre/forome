@@ -1,0 +1,12 @@
+[Unit]
+Description=Forome - sauvegarde quotidienne du relais
+
+[Timer]
+OnCalendar=daily
+# La VM peut être arrêtée ou redémarrée à l'heure prévue (free tier) : sans
+# Persistent, ce jour-là n'est simplement jamais sauvegardé.
+Persistent=true
+RandomizedDelaySec=30m
+
+[Install]
+WantedBy=timers.target

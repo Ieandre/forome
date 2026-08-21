@@ -24,7 +24,8 @@
     "smoke:nip46": "npx tsx scripts/smoke-nip46.ts",
     "smoke:moderation": "npx tsx scripts/smoke-moderation.ts",
     "smoke:edit": "npx tsx scripts/smoke-edit.ts",
-    "check:relays": "npx tsx scripts/check-relays.ts"
+    "check:relays": "npx tsx scripts/check-relays.ts",
+    "backup:fetch": "bash scripts/fetch-backup.sh"
   },
   "engines": {
     "node": ">=22"

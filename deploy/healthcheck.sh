@@ -58,6 +58,21 @@ else
   note "site public" "non testé (web.env absent)"
 fi
 
+echo "Sauvegarde"
+# Informatif, jamais bloquant : une sauvegarde vieillissante est un problème à
+# régler, pas une raison de refuser un déploiement — mais elle doit se voir.
+dernier="$(ls -1t "$DATA/backups"/forome-*.jsonl.gz 2>/dev/null | head -1 || true)"
+if [ -n "$dernier" ]; then
+  heures=$(( ( $(date +%s) - $(stat -c %Y "$dernier") ) / 3600 ))
+  if [ "$heures" -gt 48 ]; then
+    note "dernier dump" "$(basename "$dernier") — il y a ${heures} h ⚠️"
+  else
+    note "dernier dump" "$(basename "$dernier") — il y a ${heures} h"
+  fi
+else
+  note "dernier dump" "aucun — systemctl list-timers forome-backup.timer"
+fi
+
 echo
 if [ "$fail" -eq 0 ]; then
   # Le SHA est un agrément, pas un résultat : lancé hors du dépôt (par un pipe,

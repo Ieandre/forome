@@ -59,6 +59,7 @@
       un bouton « gras » qui insère du texte littéral serait un faux bouton.
     -->
     <form
+      ref="boxEl"
       class="composer__box"
       :class="{ 'composer__box--collapsed': collapsed }"
       @submit.prevent="send"
@@ -185,7 +186,7 @@
  * juste après, en ligne, dismissible. L'utilisateur apprend qui il est au moment
  * où ça devient pertinent, sans qu'on lui ait fait payer un clic pour écrire.
  */
-import { ref, computed, watch, nextTick } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import type { NostrEvent } from '~/types/nostr'
 import type { MarkupKind, BlockKind } from '~/utils/serialize'
 import { imetaTags, type ImageMeta } from '~/utils/media'
@@ -302,12 +303,28 @@ function onBoxClick(): void {
 }
 
 /**
- * Le focus sort de la boîte — pas seulement du champ : un clic sur « G » quitte
- * le contenteditable pour le bouton, et `RichEditor` lui rend la main juste
- * après (voir `restoreCaret`). Se replier là-dessus fermerait le composeur à
- * chaque mise en gras.
+ * Le doigt s'est-il posé DANS la boîte ? Recalculé à chaque `pointerdown` du
+ * document, donc jamais périmé.
+ *
+ * ⚠️ C'est ce qui rend « Poster » cliquable, et le garde-fou évident ne suffit
+ * pas : Safari ne donne pas le focus à un `<button>` au clic, donc le
+ * `relatedTarget` du `focusout` y vaut `null` même quand le doigt vient de se
+ * poser sur le bouton. L'ordre est pointerdown → focusout → click : le
+ * composeur se repliait au focusout, `display: none` retirait « Poster » avant
+ * que le click n'arrive, et le message ne partait jamais. Idem pour chaque
+ * bouton de la barre d'outils. Chrome donne le focus, lui — d'où un défaut
+ * invisible partout sauf là où il compte.
  */
+const boxEl = ref<HTMLFormElement | null>(null)
+let pointerInBox = false
+function onDocPointerDown(e: Event): void {
+  pointerInBox = !!boxEl.value?.contains(e.target as Node)
+}
+onMounted(() => document.addEventListener('pointerdown', onDocPointerDown, true))
+onUnmounted(() => document.removeEventListener('pointerdown', onDocPointerDown, true))
+
 function onFocusOut(e: FocusEvent): void {
+  if (pointerInBox) return
   const box = e.currentTarget as HTMLElement
   const next = e.relatedTarget as Node | null
   if (next && box.contains(next)) return
@@ -439,6 +456,11 @@ async function send(): Promise<void> {
       editorEl.value?.clear()
       images.reset()
       stickerOpen.value = false
+      // Replié explicitement, et pas laissé au `focusout` : sur Safari le blur
+      // du champ a eu lieu AVANT le clic sur « Poster » (voir `onDocPointerDown`),
+      // donc plus aucun focus ne sortira de la boîte et elle resterait ouverte
+      // pour toujours après l'envoi. Le message est parti : on revient au fil.
+      expanded.value = false
       emit('posted', ev, replacedId)
     },
   })

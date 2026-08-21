@@ -39,7 +39,7 @@
 
       <TopicModeration v-if="modPanel && openTopicId" :topic-id="openTopicId" @close="modPanel = false" />
 
-      <PostFeed ref="feedEl" :topic-id="openTopicId" @reply="replyTo = $event" />
+      <PostFeed ref="feedEl" :topic-id="openTopicId" @reply="onReplyRequest" />
 
       <!-- Le flux global est un mode de test de débit, pas un topic : on n'y
            publie pas (il n'a pas de racine à laquelle rattacher une réponse). -->
@@ -64,11 +64,12 @@
         :root-id="openTopicId"
         :root="root"
         :reply-to="replyTo"
+        :reply-to-index="replyToIndex"
         :participants="feedEl?.participants ?? []"
         @posted="onPosted"
         @unsent="onPostUnsent"
         @settled="onPostSettled"
-        @cancel-reply="replyTo = null"
+        @cancel-reply="clearReply"
       />
       <footer v-else class="topic-foot">
         <span class="tag tag--warn">démo débit</span>
@@ -154,6 +155,18 @@ const router = useRouter()
 const { copied, copy } = useCopy()
 const modPanel = ref(false)
 const replyTo = ref<NostrEvent | null>(null)
+/** Le nº du message visé dans ce fil, tel qu'il s'affichait au clic sur « Citer ». */
+const replyToIndex = ref<number | null>(null)
+
+function onReplyRequest(ev: NostrEvent, index: number | null): void {
+  replyTo.value = ev
+  replyToIndex.value = index
+}
+
+function clearReply(): void {
+  replyTo.value = null
+  replyToIndex.value = null
+}
 const feedEl = ref<{
   pushOwnPost: (ev: NostrEvent, replacedId?: string) => void
   dropPost: (id: string) => void
@@ -171,7 +184,7 @@ const feedEl = ref<{
 function onPosted(ev: NostrEvent, replacedId?: string): void {
   feedEl.value?.pushOwnPost(ev, replacedId)
   feedEl.value?.markOwnState(ev.id, 'pending')
-  replyTo.value = null
+  clearReply()
 }
 
 /**
@@ -204,7 +217,7 @@ const lockNotice = computed(() => (props.openTopicId ? mod.lockNotice(props.open
 watch(
   () => props.openTopicId,
   (id) => {
-    replyTo.value = null
+    clearReply()
     if (id && id !== FIREHOSE_TOPIC_ID) void topicStore.fetchRoot(id)
   },
   { immediate: true },

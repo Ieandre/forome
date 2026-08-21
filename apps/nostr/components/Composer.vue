@@ -67,17 +67,28 @@
       @focusout="onFocusOut"
       @click="onBoxClick"
     >
+      <!--
+        Le message visé, montré comme la réponse publiée le montrera : filet à
+        gauche, amorce, nº local — le gabarit de `.msg__quote` du fil. En texte
+        gris sur la rangée d'identité, il se lisait comme du chrome à côté du
+        pseudo de l'auteur, et se répondre à soi-même affichait deux fois le
+        même mot sans que rien ne distingue lequel désignait la cible.
+      -->
+      <div v-if="replyTo" class="composer__target">
+        <span class="composer__target-head">
+          <span class="composer__target-verb">en réponse à</span>
+          <span class="composer__target-who">{{ profiles.displayName(replyTo.pubkey) }}</span>
+          <span v-if="replyToIndex" class="composer__target-seq mono">#{{ replyToIndex }}</span>
+          <button type="button" class="tool composer__cancel" @click="emit('cancelReply')">annuler</button>
+        </span>
+        <span class="composer__target-text" :class="{ 'composer__target-text--dead': !targetPreview }">
+          {{ targetPreview || 'message vide' }}
+        </span>
+      </div>
+
       <div class="composer__top">
         <UserAvatar v-if="identity.pubkey" :pubkey="identity.pubkey" :size="18" />
         <span class="composer__as">{{ identity.displayName }}</span>
-
-        <template v-if="replyTo">
-          <span class="composer__replyto">
-            <span aria-hidden="true">↳</span> réponse à
-            <strong>{{ profiles.displayName(replyTo.pubkey) }}</strong>
-          </span>
-          <button type="button" class="tool composer__cancel" @click="emit('cancelReply')">annuler</button>
-        </template>
       </div>
 
       <MarkupToolbar
@@ -190,11 +201,14 @@ import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import type { NostrEvent } from '~/types/nostr'
 import type { MarkupKind, BlockKind } from '~/utils/serialize'
 import { imetaTags, type ImageMeta } from '~/utils/media'
+import { quotePreview } from '~/utils/format'
 
 const props = defineProps<{
   rootId: string
   root: NostrEvent | null
   replyTo?: NostrEvent | null
+  /** Le nº du message visé dans le fil ouvert. Absent s'il a quitté le cap DOM. */
+  replyToIndex?: number | null
   /** Les gens du fil ouvert, proposés en premier à la frappe `@…`. */
   participants?: string[]
 }>()
@@ -278,12 +292,23 @@ const expanded = ref(false)
 const collapsed = computed(() => !expanded.value)
 
 /**
+ * Amorce du message visé. Une ligne et non deux comme dans le fil : ici elle
+ * rappelle la cible, elle ne la cite pas — c'est la réponse en train de
+ * s'écrire qui doit garder la place.
+ */
+const targetPreview = computed(() =>
+  props.replyTo?.content
+    ? quotePreview(props.replyTo.content, 140, (pubkey) => profiles.displayName(pubkey))
+    : '',
+)
+
+/**
  * Ce qu'un repli escamoterait, et qui le retient donc ouvert.
  *
  * Un brouillon en texte n'en fait PAS partie : la barre repliée l'affiche, donc
  * le replier ne cache rien — et c'est en pleine rédaction qu'on a le plus besoin
  * de relire ce à quoi on répond. Une image jointe, elle, ne tient pas sur une
- * ligne, et « ↳ réponse à X » disparaîtrait sans que rien ne le remplace.
+ * ligne, et le bandeau de la cible disparaîtrait sans que rien ne le remplace.
  */
 const wouldHideSomething = computed(
   () =>
@@ -582,16 +607,70 @@ function doneBackup(): void {
   font-size: var(--fs-md);
   color: var(--ink-2);
 }
-.composer__replyto {
-  min-width: 0;
-  margin-left: 4px;
+/* Bandeau de la cible. Même vocabulaire que `.msg__quote` du fil — filet à
+   gauche, fond teinté, nº — pour que le composeur montre déjà ce que la réponse
+   publiée montrera. Le filet est bleu et non gris : c'est la cible ACTIVE, celle
+   qu'on est en train de viser, et le survol d'une citation du fil passe déjà au
+   bleu pour dire « celle-là ». Le fond monte à `--surface-3` : `--surface-sunken`
+   est la couleur de la boîte elle-même, le bandeau y disparaîtrait. */
+.composer__target {
+  position: relative;
+  background: var(--surface-3);
+  border-bottom: 1px solid var(--line-soft);
+  /* 24px = les 13px de marge du texte du composeur, le filet, et son écart. Le
+     filet est posé en `::before` et non en `border-left` : sur le bord de la
+     boîte il se collait à la bordure de celle-ci, qui passe au bleu au focus —
+     les deux ne faisaient plus qu'une seule arête épaisse. */
+  padding: 7px 13px 8px 24px;
   color: var(--ink-3);
+}
+.composer__target::before {
+  content: '';
+  position: absolute;
+  left: 13px;
+  top: 7px;
+  bottom: 8px;
+  width: 2px;
+  border-radius: 999px;
+  background: var(--link);
+}
+.composer__target-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-bottom: 1px;
+  font-size: var(--fs-xs);
+}
+.composer__target-verb {
+  flex-shrink: 0;
+  color: var(--ink-4);
+}
+.composer__target-who {
+  font-weight: 700;
+  color: var(--ink-2);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.composer__replyto strong {
-  color: var(--ink-2);
+.composer__target-seq {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: -0.02em;
+  color: var(--ink-3);
+}
+/* Une ligne, coupée net : la réponse en cours d'écriture garde la place. */
+.composer__target-text {
+  display: block;
+  font-size: var(--fs-md);
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.composer__target-text--dead {
+  font-style: italic;
+  color: var(--ink-4);
 }
 .composer__cancel {
   margin-left: auto;

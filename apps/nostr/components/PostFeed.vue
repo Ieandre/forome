@@ -141,7 +141,11 @@ import { parseImeta } from '~/utils/media'
 import type { SubHandle } from '~/stores/relays'
 
 const props = defineProps<{ topicId: string }>()
-const emit = defineEmits<{ reply: [event: NostrEvent] }>()
+const emit = defineEmits<{
+  /** Le nº local accompagne l'event : le composeur montre « #14 » sans avoir à
+      refaire la numérotation, qui n'existe que dans ce fil-ci. */
+  reply: [event: NostrEvent, index: number | null]
+}>()
 
 // Constante et non littéral dans le template : voir `PostItem` (mêmes bulles).
 const BODY_AMBIANCE = [
@@ -775,7 +779,8 @@ function subscribeLive(): void {
 
 function onReplyRequest(id: string): void {
   const ev = eventById.get(id)
-  if (ev) emit('reply', ev)
+  if (!ev) return
+  emit('reply', ev, displayPosts.value.find((p) => p.id === id)?.index ?? null)
 }
 
 /**

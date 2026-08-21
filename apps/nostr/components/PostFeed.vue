@@ -67,8 +67,24 @@
       </button>
     </Transition>
     <Transition name="pill-pop">
-      <button v-if="!hooked && pendingCount === 0" type="button" class="feed__back-to-live" @click="jumpToLive">
-        ↓ revenir en direct
+      <button
+        v-if="!hooked && pendingCount === 0"
+        type="button"
+        class="feed__back-to-live"
+        aria-label="revenir en direct"
+        @click="jumpToLive"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2.1"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M12 5.4v13.2M6.4 13l5.6 5.6 5.6-5.6" />
+        </svg>
       </button>
     </Transition>
   </div>
@@ -930,7 +946,7 @@ function teardown(): void {
  * Le fil rétrécit quand le composeur se déplie (et quand le clavier monte) :
  * ~210 px d'un coup. `scrollTop` ne bouge pas dans ce cas, donc le bas du fil
  * passe sous le composeur — on se retrouve décroché du direct sans avoir touché
- * à l'écran, et « ↓ revenir en direct » apparaît tout seul. On se remet au
+ * à l'écran, et la flèche de retour au direct apparaît toute seule. On se remet au
  * contact, mais seulement si on y était : quelqu'un qui lisait plus haut doit
  * rester où il lit.
  */
@@ -1135,14 +1151,20 @@ watch(
   border: none;
 }
 .feed__back-to-live {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
   background: var(--surface);
   color: var(--ink-2);
   border: 1px solid var(--line);
   border-radius: 999px;
-  padding: 7px 16px;
-  font-size: var(--fs-md);
-  font-weight: 600;
   box-shadow: var(--shadow-pop);
+}
+.feed__back-to-live svg {
+  width: 18px;
+  height: 18px;
 }
 .feed__back-to-live:hover {
   background: var(--surface-3);

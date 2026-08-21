@@ -12,8 +12,8 @@
       <ol class="adm__steps">
         <li>
           <p class="adm__step-text">Copie ta clé publique :</p>
-          <button v-if="myNpub" type="button" class="btn btn--sm" @click="copy(myNpub)">
-            {{ copied ? 'copié' : 'copier ma clé' }}
+          <button v-if="myNpub" type="button" class="btn btn--sm" @click="void copyNpub(myNpub)">
+            {{ npubCopied ? 'copié' : 'copier ma clé' }}
           </button>
         </li>
         <li>
@@ -347,8 +347,8 @@ npm run dev:nostr</pre>
           le reconstruit seul depuis les events qu'il reçoit.
         </p>
         <pre class="adm__code">{{ relayJson }}</pre>
-        <button type="button" class="btn btn--sm" @click="copy(relayJson)">
-          {{ copied ? 'copié' : 'copier' }}
+        <button type="button" class="btn btn--sm" @click="void copyJson(relayJson)">
+          {{ jsonCopied ? 'copié' : 'copier' }}
         </button>
 
         <h2 class="adm__h2">À purger</h2>
@@ -360,8 +360,8 @@ npm run dev:nostr</pre>
         <p v-if="mod.toPurge.length === 0" class="adm__empty-sub">Rien à purger.</p>
         <template v-else>
           <pre class="adm__code">{{ purgeCommand }}</pre>
-          <button type="button" class="btn btn--sm" @click="copy(purgeCommand)">
-            {{ copied ? 'copié' : 'copier la commande' }}
+          <button type="button" class="btn btn--sm" @click="void copyPurge(purgeCommand)">
+            {{ purgeCopied ? 'copié' : 'copier la commande' }}
           </button>
         </template>
       </section>
@@ -406,7 +406,13 @@ const journalKind = ref<'all' | 'hidden' | 'banned' | 'locked' | 'pinned'>('all'
 
 const askRevoke = ref<string | null>(null)
 const newMod = ref('')
-const copied = ref(false)
+/**
+ * Une confirmation par bouton : les trois « copier » de la page se touchent, et
+ * un seul drapeau partagé faisait clignoter « copié » sur les deux autres.
+ */
+const { copied: npubCopied, copy: copyNpub } = useCopy()
+const { copied: jsonCopied, copy: copyJson } = useCopy()
+const { copied: purgeCopied, copy: copyPurge } = useCopy()
 
 /** Messages visés par un signalement, chargés à la demande. */
 const targets = ref(new Map<string, NostrEvent>())
@@ -562,16 +568,6 @@ const relayJson = computed(() => JSON.stringify(mod.relayState, null, 2))
 const purgeCommand = computed(
   () => `strfry delete --filter '${JSON.stringify({ ids: mod.toPurge })}'`,
 )
-
-async function copy(text: string): Promise<void> {
-  try {
-    await navigator.clipboard.writeText(text)
-    copied.value = true
-    setTimeout(() => (copied.value = false), 1500)
-  } catch {
-    /* presse-papier indisponible — pas bloquant */
-  }
-}
 
 /* ------------------------------------------------------------- clavier */
 

@@ -382,19 +382,10 @@ const nip05FileBody = computed(() =>
   ),
 )
 
-const jsonCopied = ref(false)
-let jsonTimer: ReturnType<typeof setTimeout> | null = null
+const { copied: jsonCopied, copy } = useCopy()
 
-async function copyNostrJson(): Promise<void> {
-  try {
-    await navigator.clipboard.writeText(nip05FileBody.value)
-    jsonCopied.value = true
-    if (jsonTimer) clearTimeout(jsonTimer)
-    jsonTimer = setTimeout(() => (jsonCopied.value = false), 1600)
-  } catch {
-    // presse-papiers refusé (contexte non sécurisé, permission) : le bloc reste
-    // sélectionnable à la main, on n'affiche pas d'erreur pour ça
-  }
+function copyNostrJson(): void {
+  void copy(nip05FileBody.value)
 }
 
 function str(v: unknown): string {

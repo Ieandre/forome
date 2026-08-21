@@ -464,7 +464,7 @@ const profiles = useProfileStore()
 const social = useSocialStore()
 const topics = useTopicStore()
 const mod = useModerationStore()
-const copied = ref(false)
+const { copied, copy } = useCopy()
 
 /** Encart ouvert sous les actions : signalement, modération, ou historique. */
 const panel = ref<'report' | 'moderate' | 'history' | null>(null)
@@ -732,16 +732,10 @@ provide(
  * l'`nevent` de la spec §4 — qui arrive en prop et n'est pas encore exposé. Le
  * titre est résolu au clic : à 150 rangées, seule la rangée cliquée en a besoin.
  */
-async function copyPermalink(): Promise<void> {
+function copyPermalink(): void {
   const root = topics.rootById(props.post.topicId)
   const path = topicPath(props.post.topicId, root ? topicTitle(root) : null)
-  try {
-    await navigator.clipboard.writeText(`${window.location.origin}${path}#msg-${props.post.id}`)
-    copied.value = true
-    setTimeout(() => (copied.value = false), 1500)
-  } catch {
-    /* presse-papier indisponible — pas bloquant */
-  }
+  void copy(`${window.location.origin}${path}#msg-${props.post.id}`)
 }
 </script>
 

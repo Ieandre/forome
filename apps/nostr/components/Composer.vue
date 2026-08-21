@@ -47,7 +47,7 @@
         <button type="button" class="btn btn--sm" @click="nsecVisible = !nsecVisible">
           {{ nsecVisible ? 'masquer' : 'afficher' }}
         </button>
-        <button type="button" class="btn btn--sm" @click="copyNsec">{{ nsecCopied ? 'copié ✓' : 'copier' }}</button>
+        <button type="button" class="btn btn--sm" @click="copyNsec">{{ nsecCopied ? 'copié' : 'copier' }}</button>
         <button type="button" class="btn btn--sm btn--primary" @click="doneBackup">c'est sauvegardé</button>
       </div>
     </div>
@@ -233,7 +233,7 @@ const pickingName = ref(false)
 const nameDraft = ref('')
 const backupOpen = ref(false)
 const nsecVisible = ref(false)
-const nsecCopied = ref(false)
+const { copied: nsecCopied, copy } = useCopy()
 const lastPow = ref<number | null>(null)
 const settledResult = computed(() => publisher.lastResult.value)
 
@@ -531,16 +531,9 @@ async function submitName(): Promise<void> {
   }
 }
 
-async function copyNsec(): Promise<void> {
+function copyNsec(): void {
   const value = identity.exportNsec()
-  if (!value) return
-  try {
-    await navigator.clipboard.writeText(value)
-    nsecCopied.value = true
-    setTimeout(() => (nsecCopied.value = false), 1500)
-  } catch {
-    /* presse-papier indisponible — l'affichage reste la porte de sortie */
-  }
+  if (value) void copy(value)
 }
 
 function doneBackup(): void {

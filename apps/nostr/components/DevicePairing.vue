@@ -25,7 +25,7 @@
             Afficher le QR ({{ HOLD_S }} s)
           </button>
           <button type="button" class="btn" @click="copy">
-            {{ copied ? 'copié ✓' : 'Copier ma clé' }}
+            {{ copied ? 'copié' : 'Copier ma clé' }}
           </button>
         </div>
 
@@ -48,7 +48,7 @@
             <div class="card__actions">
               <button type="button" class="btn btn--sm" @click="hide">Masquer</button>
               <button type="button" class="btn btn--sm" @click="copy">
-                {{ copied ? 'copié ✓' : 'Copier ma clé' }}
+                {{ copied ? 'copié' : 'Copier ma clé' }}
               </button>
             </div>
             <button type="button" class="reveal__swap" @click="swapQr">
@@ -167,7 +167,7 @@
               <!-- Signeur sur CE téléphone : on ne peut pas scanner son propre
                    écran, l'invitation se colle alors dans l'app. -->
               <button type="button" class="btn btn--sm" @click="copyInvite">
-                {{ inviteCopied ? 'copié ✓' : 'Copier l’invitation' }}
+                {{ inviteCopied ? 'copié' : 'Copier l’invitation' }}
               </button>
             </div>
           </div>
@@ -260,12 +260,12 @@ const devTools = useDevTools()
 const bunkerDraft = ref('')
 const revealed = ref(false)
 const remaining = ref(HOLD_S)
-const copied = ref(false)
+const { copied, copy: copyText } = useCopy()
 const importDraft = ref('')
 const importError = ref<string | null>(null)
 const importedPubkey = ref<string | null>(null)
 const arrivedByQr = ref(false)
-const inviteCopied = ref(false)
+const { copied: inviteCopied, copy: copyInviteText } = useCopy()
 /** `link` = QR vers cette page ; `key` = clé nue, pour une app signeur. */
 const qrMode = ref<'link' | 'key'>('link')
 
@@ -333,16 +333,9 @@ function hide(): void {
   timer = null
 }
 
-async function copy(): Promise<void> {
+function copy(): void {
   const value = identity.exportNsec()
-  if (!value) return
-  try {
-    await navigator.clipboard.writeText(value)
-    copied.value = true
-    setTimeout(() => (copied.value = false), 1500)
-  } catch {
-    /* presse-papier indisponible — le QR reste la porte de sortie */
-  }
+  if (value) void copyText(value)
 }
 
 async function doConnect(): Promise<void> {
@@ -354,16 +347,9 @@ function doNostrConnect(): void {
   void identity.startNostrConnect()
 }
 
-async function copyInvite(): Promise<void> {
+function copyInvite(): void {
   const uri = identity.connectUri
-  if (!uri) return
-  try {
-    await navigator.clipboard.writeText(uri)
-    inviteCopied.value = true
-    setTimeout(() => (inviteCopied.value = false), 1500)
-  } catch {
-    /* presse-papier indisponible — le QR reste la porte d'entrée */
-  }
+  if (uri) void copyInviteText(uri)
 }
 
 function doImport(): void {

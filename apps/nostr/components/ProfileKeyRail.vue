@@ -14,7 +14,7 @@
           : 'copier la clé publique — c’est l’adresse à donner pour être retrouvé depuis n’importe quel client Nostr'
       "
     >
-      <button type="button" class="keyrail__npub mono" @click="copy">
+      <button type="button" class="keyrail__npub mono" @click="copyNpub">
         <span class="keyrail__npub-text">{{ npub }}</span>
         <span class="keyrail__npub-act">{{ copied ? 'copié' : 'copier' }}</span>
       </button>
@@ -56,7 +56,7 @@
  * vocabulaire (`Explain`, on l'ouvre et on lit), la npub est un bouton dont il
  * faut connaître le nom (`Hint`, une bulle qui passe).
  */
-import { ref, computed } from 'vue'
+import { computed } from 'vue'
 import { kheyHandle, npubFor } from '~/utils/nostr'
 
 const props = defineProps<{
@@ -69,22 +69,13 @@ const props = defineProps<{
   declaredName?: string | null
 }>()
 
-const copied = ref(false)
-let timer: ReturnType<typeof setTimeout> | null = null
+const { copied, copy } = useCopy()
 
 const handle = computed(() => kheyHandle(props.pubkey))
 const npub = computed(() => npubFor(props.pubkey))
 
-async function copy(): Promise<void> {
-  try {
-    await navigator.clipboard.writeText(npub.value)
-    copied.value = true
-    if (timer) clearTimeout(timer)
-    timer = setTimeout(() => (copied.value = false), 1600)
-  } catch {
-    // presse-papiers refusé (contexte non sécurisé, permission) : la clé reste
-    // sélectionnable à la main, on n'affiche pas d'erreur pour ça
-  }
+function copyNpub(): void {
+  void copy(npub.value)
 }
 </script>
 

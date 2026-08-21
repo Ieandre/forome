@@ -28,7 +28,20 @@
               </NuxtLink>
               <span class="pub__member-disc mono">·{{ profiles.discriminator(pubkey) }}</span>
             </div>
-            <span class="tag tag--staff">{{ role === 'admin' ? 'admin' : 'modération' }}</span>
+            <!-- Le bouclier n'était pas cliquable ici, contrairement au fil.
+                 Il le devient : plein pour l'admin, en contour pour la
+                 modération, et cette différence-là se lit au clic ou nulle
+                 part. -->
+            <Explain
+              :term="ROLE_BADGES[role].label"
+              variant="chip"
+              :body="ROLE_BADGES[role].body"
+            >
+              <span class="tag tag--staff">
+                <Glyph name="shield" :filled="ROLE_BADGES[role].admin" />
+                <span class="visually-hidden">{{ ROLE_BADGES[role].label }}</span>
+              </span>
+            </Explain>
           </li>
         </ul>
       </section>
@@ -44,9 +57,12 @@
 
         <ol v-else class="pub__log">
           <li v-for="a in mod.journal" :key="`${a.type}:${a.target}`" class="pub__entry">
-            <span class="tag" :class="a.class === 'illegal' ? 'tag--warn' : 'tag--staff'">
-              {{ verbLabel(a.type) }}
-            </span>
+            <Hint :text="verbLabel(a.type)">
+              <span class="tag" :class="a.class === 'illegal' ? 'tag--warn' : 'tag--staff'">
+                <Glyph :name="badgeOf(a.type).glyph" />
+                <span class="visually-hidden">{{ verbLabel(a.type) }}</span>
+              </span>
+            </Hint>
             <span class="pub__entry-reason">{{ a.reason || 'sans motif' }}</span>
             <span class="pub__entry-by">{{ profiles.displayName(a.by) }}</span>
             <time class="pub__entry-when mono">{{ relativeTime(a.at) }}</time>
@@ -83,20 +99,25 @@
 import { relativeTime } from '~/utils/format'
 import { npubFor } from '~/utils/nostr'
 import type { ActionType } from '@forome/relay-policy/moderation'
+import { ACTION_BADGES, ROLE_BADGES } from '~/types/moderation'
 
 usePageTitle('Modération')
 
 const mod = useModerationStore()
 const profiles = useProfileStore()
 
+/**
+ * Le journal ne montre que les décisions en vigueur, donc jamais un inverse —
+ * mais `ActionType` les contient, d'où le repli sur le cadenas plutôt qu'un
+ * plantage de rendu si un type inconnu arrivait d'un autre client.
+ */
+function badgeOf(type: ActionType) {
+  return ACTION_BADGES[type as keyof typeof ACTION_BADGES] ?? ACTION_BADGES.lock
+}
+
+/** Le mot que l'icône remplace. Il nomme l'objet, que la forme seule perd. */
 function verbLabel(type: ActionType): string {
-  const labels: Partial<Record<ActionType, string>> = {
-    hide: 'message masqué',
-    ban: 'compte banni',
-    lock: 'topic verrouillé',
-    pin: 'topic épinglé',
-  }
-  return labels[type] ?? type
+  return badgeOf(type).object
 }
 </script>
 

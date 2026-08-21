@@ -140,7 +140,10 @@
                qu'on suit en parcourant la liste. -->
           <span class="topic-row__dot" aria-hidden="true" />
           <Hint v-if="mod.isPinned(t.id)" text="épinglé par la modération">
-            <span class="tag tag--staff topic-row__flag">épinglé</span>
+            <span class="tag tag--staff topic-row__flag">
+              <Glyph name="pin" />
+              <span class="visually-hidden">épinglé</span>
+            </span>
           </Hint>
           <!-- La bulle du compteur le dit aussi, mais elle est `aria-hidden` et
                le nombre porte déjà son propre nom accessible : sans ça le point
@@ -156,10 +159,19 @@
             v-if="mod.isLocked(t.id)"
             :text="`verrouillé par la modération — ${mod.lockNotice(t.id)?.reason ?? 'sans motif'}`"
           >
-            <span class="tag topic-row__flag">verrouillé</span>
+            <span class="tag topic-row__flag">
+              <Glyph name="lock" />
+              <span class="visually-hidden">verrouillé</span>
+            </span>
           </Hint>
           <!-- `Hint` et non `Explain` : la rangée est un lien, et un bouton
-               dans un lien est invalide autant qu'impraticable au clavier. -->
+               dans un lien est invalide autant qu'impraticable au clavier.
+
+               Conséquence assumée pour le cadenas et l'épingle : au doigt la
+               bulle ne s'ouvre pas (voir `Hint`), donc l'icône est seule. Le
+               motif complet attend dans `ForumShell` dès que le topic s'ouvre,
+               et la rangée ne répond qu'à « j'ouvre ? ». « raid » reste un mot
+               faute d'icône que quiconque reconnaîtrait. -->
           <Hint
             v-if="topicStore.flaggedTopics.has(t.id)"
             text="arrivée corrélée de clés inconnues, d'après l'indexeur"

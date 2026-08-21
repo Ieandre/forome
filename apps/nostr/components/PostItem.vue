@@ -64,7 +64,10 @@
            dans un fil sans marqueur est indistinguable d'un khey qui se donne de
            l'importance, et l'autorité qu'on ne voit pas n'existe pas. -->
       <Explain v-if="staffTag" :term="staffTag.label" variant="chip" :body="staffTag.body">
-        <span class="tag tag--staff">{{ staffTag.label }}</span>
+        <span class="tag tag--staff">
+          <Glyph name="shield" :filled="staffTag.admin" />
+          <span class="visually-hidden">{{ staffTag.label }}</span>
+        </span>
       </Explain>
 
       <span v-if="post.root" class="tag tag--brand">auteur du topic</span>
@@ -385,6 +388,7 @@ import { relativeTime, forumTime, absoluteTime, shortId, quotePreview } from '~/
 import { npubFor, topicTitle } from '~/utils/nostr'
 import { topicPath } from '~/utils/permalink'
 import type { OwnState, Post, QuotedPost } from '~/types/nostr'
+import { ROLE_BADGES } from '~/types/moderation'
 import { parseRichText, hasMarkup } from '~/utils/richtext'
 
 /**
@@ -510,22 +514,7 @@ const veiled = computed(() => !!veil.value && !revealed.value)
 /** Le rôle de l'auteur, s'il en a un. Une autorité invisible n'existe pas. */
 const staffTag = computed(() => {
   const role = mod.roleOf(props.post.pubkey)
-  if (!role) return null
-  return role === 'admin'
-    ? {
-        label: 'admin',
-        body: [
-          'Cette clé administre le forum : elle nomme les modérateurs.',
-          'Elle est désignée par le roster signé du forum, pas auto-proclamée.',
-        ],
-      }
-    : {
-        label: 'modération',
-        body: [
-          'Cette clé fait partie de l’équipe de modération de ce forum.',
-          'Ses décisions sont des messages signés, publics et vérifiables.',
-        ],
-      }
+  return role ? ROLE_BADGES[role] : null
 })
 
 /**

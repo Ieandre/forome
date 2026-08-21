@@ -52,7 +52,12 @@
            et le motif est affiché. Fermer sans dire pourquoi serait la censure
            silencieuse que le §9.2 refuse. -->
       <footer v-if="lockNotice" class="topic-foot">
-        <span class="tag">verrouillé</span>
+        <!-- Le cadenas seul se permet ici ce qu'il ne peut pas ailleurs : la
+             phrase qui suit porte déjà le motif et l'auteur de la décision. -->
+        <span class="tag">
+          <Glyph name="lock" />
+          <span class="visually-hidden">verrouillé</span>
+        </span>
         <span class="topic-foot__note">
           {{ lockNotice.reason }} — décision de {{ profiles.displayName(lockNotice.by) }}. Le fil
           reste lisible ; nos relais n'acceptent plus de réponse.

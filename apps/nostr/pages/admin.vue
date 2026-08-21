@@ -204,10 +204,17 @@ npm run dev:nostr</pre>
         <table v-else class="adm__table">
           <tbody>
             <tr v-for="a in journal" :key="`${a.type}:${a.target}`">
+              <!-- La colonne est là pour se parcourir de haut en bas : quatre
+                   mots de même longueur et même casse se lisaient un par un,
+                   quatre formes se trient à l'œil. Le mot reste dans la bulle
+                   et au lecteur d'écran. -->
               <td class="adm__cell-verb">
-                <span class="tag" :class="a.class === 'illegal' ? 'tag--warn' : 'tag--staff'">
-                  {{ verbLabel(a.type) }}
-                </span>
+                <Hint :text="verbLabel(a.type)">
+                  <span class="tag" :class="a.class === 'illegal' ? 'tag--warn' : 'tag--staff'">
+                    <Glyph :name="badgeOf(a.type).glyph" />
+                    <span class="visually-hidden">{{ verbLabel(a.type) }}</span>
+                  </span>
+                </Hint>
               </td>
               <td class="adm__cell-reason">{{ a.reason }}</td>
               <td class="adm__cell-target mono">{{ shortId(a.target, 10) }}</td>
@@ -258,7 +265,18 @@ npm run dev:nostr</pre>
                 {{ mod.actionsBy(pubkey).length }} décision(s) en vigueur
               </p>
             </div>
-            <span class="tag tag--staff">{{ role === 'admin' ? 'admin' : 'modération' }}</span>
+            <Explain
+              :term="ROLE_BADGES[role].label"
+              variant="chip"
+              :body="ROLE_BADGES[role].body"
+            >
+              <span class="tag tag--staff">
+                <Glyph name="shield" :filled="ROLE_BADGES[role].admin" />
+                <span class="visually-hidden">{{ ROLE_BADGES[role].label }}</span>
+              </span>
+            </Explain>
+            <!-- « clé racine » reste un mot : c'est un fait de configuration,
+                 pas un rôle, et aucun pictogramme ne le dit. -->
             <span v-if="pubkey === mod.rootAdmin" class="tag tag--brand">clé racine</span>
             <button
               v-else-if="isRoot"
@@ -356,7 +374,13 @@ import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { relativeTime, shortId } from '~/utils/format'
 import { npubFor, topicTitle } from '~/utils/nostr'
 import { topicPath } from '~/utils/permalink'
-import { REPORT_LABELS, type ReportType, type ReportGroup } from '~/types/moderation'
+import {
+  ACTION_BADGES,
+  ROLE_BADGES,
+  REPORT_LABELS,
+  type ReportType,
+  type ReportGroup,
+} from '~/types/moderation'
 import type { ActionType, AppliedAction, Role } from '@forome/relay-policy/moderation'
 import type { NostrEvent } from '~/types/nostr'
 
@@ -499,14 +523,17 @@ const journal = computed<AppliedAction[]>(() => {
   })
 })
 
+/** Voir `ACTION_BADGES` : un inverse ne s'affiche jamais, d'où le repli. */
+function badgeOf(type: ActionType) {
+  return ACTION_BADGES[type as keyof typeof ACTION_BADGES] ?? ACTION_BADGES.lock
+}
+
+/**
+ * Le mot que l'icône remplace. Le panneau a sa propre colonne de cible, donc
+ * il lui suffit du verbe — la page publique, elle, nomme l'objet.
+ */
 function verbLabel(type: ActionType): string {
-  const labels: Partial<Record<ActionType, string>> = {
-    hide: 'masqué',
-    ban: 'banni',
-    lock: 'verrouillé',
-    pin: 'épinglé',
-  }
-  return labels[type] ?? type
+  return badgeOf(type).label
 }
 
 async function undo(a: AppliedAction): Promise<void> {

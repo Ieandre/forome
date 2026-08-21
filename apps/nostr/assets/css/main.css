@@ -644,8 +644,22 @@ kbd {
 
 /* --------------------------------------------------------------------- tags
    Étiquette en petites capitales. Aplat teinté sans bordure : à cette taille,
-   un cadre de 1 px autour de 9 px de texte fait une croûte. Toujours du texte,
-   jamais une icône devinée. */
+   un cadre de 1 px autour de 9 px de texte fait une croûte.
+
+   Texte ou icône, et la frontière n'est pas négociable : passe en `Glyph` ce
+   qui est un ÉTAT dont le pictogramme s'apprend ailleurs — cadenas, épingle,
+   bouclier, œil barré, cercle barré. Reste en mots :
+
+   - ce qu'aucune icône ne désigne (« raid », « clé racine », « toi », « auteur
+     du topic », « nip-05 ») — une icône devinée est une information perdue ;
+   - les états d'envoi (« envoi… », « non publié », « correction non publiée »).
+     Ils existent parce qu'un échec silencieux est invisible ; les réduire à un
+     pictogramme rendrait le refus muet, ce qui est exactement le défaut qu'ils
+     corrigent.
+
+   Le mot ne disparaît jamais du DOM, seulement de l'écran : `.visually-hidden`
+   à côté du `Glyph`, et un `Explain` (au clic) ou un `Hint` (au survol) pour le
+   rendre au lecteur. */
 .tag {
   display: inline-flex;
   align-items: center;

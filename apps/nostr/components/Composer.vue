@@ -757,12 +757,16 @@ function doneBackup(): void {
   padding-top: 7px;
   padding-bottom: 7px;
 }
+/* La marge haute et basse est portée par la BOÎTE et non par le champ. Sur le
+   champ, elle entrerait dans son `max-height` — `box-sizing: border-box` est
+   global — et il ne resterait que 7 px de contenu pour une ligne de 26 : le
+   texte débordait par le bas et se faisait couper en deux. */
 .composer__box--collapsed {
   display: grid;
   grid-template-columns: auto 1fr;
   align-items: center;
   column-gap: 9px;
-  padding: 0 13px;
+  padding: 9px 13px;
   cursor: text;
 }
 .composer__box--collapsed .composer__top {
@@ -773,14 +777,15 @@ function doneBackup(): void {
 .composer__box--collapsed .composer__bottom {
   display: none;
 }
-/* `1.6em` = exactement l'interligne du champ, donc UNE ligne pleine et pas de
-   deuxième ligne à moitié rognée. C'est ce qui borne la barre quand on la replie
-   sur un brouillon de dix lignes : elle en montre la première et ne bouge plus. */
+/* `1.6em` = exactement l'interligne du champ, et sans padding pour l'amputer :
+   UNE ligne pleine, pas de deuxième à moitié rognée. C'est ce qui borne la barre
+   quand on la replie sur un brouillon de dix lignes — elle en montre la
+   première et ne bouge plus. */
 .composer__box--collapsed :deep(.composer__input) {
   min-height: 0;
   max-height: 1.6em;
   overflow: hidden;
-  padding: 9px 0;
+  padding: 0;
   /* Le champ passe en `nowrap` le temps du repli — c'est ce qui rend l'ellipse
      possible, un texte coupé net au bord se lisant comme un défaut d'affichage.
      Sans effet sur ce qui sera publié : `pre-wrap` revient avec la classe. */

@@ -763,23 +763,21 @@ function onReplyRequest(id: string): void {
 }
 
 /**
- * Affichage optimiste de son propre message (spec §6.3) : **jamais par le
- * tampon**, sinon écrire donne l'impression que le site est cassé.
- *
- * Garde anti-doublon : l'écho du relais arrivera aussi par la souscription
- * live, éventuellement avant que `publish` ne résolve. `known()` couvre le sens
- * inverse, ceci couvre celui-ci.
- */
-/**
- * Retire un post déjà affiché. Sert au renvoi après refus de PoW : la nouvelle
- * tentative porte un nonce différent, donc un id différent — garder les deux
- * afficherait un doublon, et l'écho du relais n'en dédoublonnerait qu'un.
+ * Retire un post déjà affiché. Deux appelants : l'écho provisoire d'un envoi qui
+ * n'a jamais produit d'event (rien n'existe, la rangée doit disparaître), et le
+ * remplacement d'un id par un autre quand la rangée n'est plus à l'écran — garder
+ * les deux afficherait un doublon, et l'écho du relais n'en dédoublonnerait qu'un.
  */
 function dropPost(id: string): void {
   const i = posts.value.findIndex((p) => p.id === id)
   if (i === -1) return
   posts.value.splice(i, 1)
   triggerRef(posts)
+  forget(id)
+}
+
+/** Oublie tout ce qu'un id traînait, sans toucher à la liste affichée. */
+function forget(id: string): void {
   eventById.delete(id)
   liveIds.value.delete(id)
   markOwnState(id, null)
@@ -792,8 +790,37 @@ function markOwnState(id: string, state: OwnState | null): void {
   ownState.value = next
 }
 
+/**
+ * Affichage optimiste de son propre message (spec §6.3) : **jamais par le
+ * tampon**, sinon écrire donne l'impression que le site est cassé.
+ *
+ * Appelé deux fois par envoi : d'abord avec l'écho provisoire posé au clic, puis
+ * avec l'event signé, qui donne en `replacedId` l'id à échanger. Le renvoi après
+ * refus de PoW emprunte le même chemin.
+ *
+ * Garde anti-doublon : l'écho du relais arrivera aussi par la souscription
+ * live, éventuellement avant que `publish` ne résolve. `known()` couvre le sens
+ * inverse, ceci couvre celui-ci.
+ */
 function pushOwnPost(ev: NostrEvent, replacedId?: string): void {
-  if (replacedId) dropPost(replacedId)
+  if (replacedId) {
+    const i = posts.value.findIndex((p) => p.id === replacedId)
+    if (i !== -1 && !known(ev.id)) {
+      /*
+       * Échange SUR PLACE, jamais retrait puis ajout. La rangée remplacée est
+       * celle que l'auteur regarde — son écho provisoire, ou sa tentative
+       * précédente après un refus de PoW. La détruire pour la recréer lui ferait
+       * voir son propre message disparaître et revenir, et le message perdrait
+       * son numéro de post le temps d'un rendu.
+       */
+      forget(replacedId)
+      posts.value[i] = toPost(ev, props.topicId)
+      liveIds.value.add(ev.id)
+      triggerRef(posts)
+      return
+    }
+    dropPost(replacedId)
+  }
   if (known(ev.id)) return
   hooked.value = true
   appendToDom(toPost(ev, props.topicId), { trackRate: false })

@@ -10,6 +10,21 @@
  * rend l'écriture instantanée. Et le message de l'auteur ne passe jamais par le
  * tampon de lissage (§6.3) — sinon écrire donne l'impression que le site est
  * cassé, ce qui est le bug le plus fréquent de ce pattern.
+ *
+ * ## Avant la diffusion ne suffisait pas
+ *
+ * « Optimiste » voulait dire *après signature* : le fil n'affichait rien tant
+ * que la PoW n'était pas minée (~120 ms en moyenne, mais loi géométrique, donc
+ * régulièrement le triple) et que le signeur n'avait pas rendu (une extension
+ * NIP-07 met des centaines de ms, un bunker NIP-46 fait un aller-retour réseau).
+ * Le clic sur « Poster » restait donc suivi d'un temps mort, et c'est ce temps
+ * mort qui fait douter que le message soit parti.
+ *
+ * D'où `onSending` : le fil reçoit le message **au clic**, sous un id provisoire
+ * (`provisionalId`), et le minage comme la signature se font derrière. Quand
+ * l'event réel existe, `onOptimistic` le donne avec l'id provisoire à remplacer
+ * — le même mécanisme que le renvoi après refus de PoW, qui change lui aussi
+ * l'id d'un message déjà à l'écran.
  */
 import { ref } from 'vue'
 import { verifyEvent } from 'nostr-tools/pure'
@@ -23,6 +38,7 @@ import {
   KIND_THREAD,
   communityTag,
   inCommunity,
+  provisionalId,
   type NostrEvent,
 } from '~/types/nostr'
 import { KIND_REPORT } from '~/types/moderation'
@@ -271,6 +287,13 @@ export function usePublisher() {
     parent?: NostrEvent | null
     /** Tags à ajouter (`imeta` des images jointes, NIP-92). */
     tags?: string[][]
+    /**
+     * Appelé **synchroniquement**, avant tout minage et toute signature : le
+     * message tel qu'il sera, sous un id provisoire. C'est ce qui rend l'envoi
+     * instantané à l'écran. L'appelant garde l'id : il en aura besoin pour
+     * retirer la rangée si `publishReply` rend `null`.
+     */
+    onSending?: (provisional: NostrEvent) => void
     onOptimistic?: (ev: NostrEvent, replacedId?: string) => void
   }): Promise<PublishOutcome | null> {
     const unsigned = draftReply(args.content, args.rootId, args.root, args.parent ?? null, args.tags ?? [])
@@ -278,7 +301,13 @@ export function usePublisher() {
       lastError.value = 'aucune identité'
       return null
     }
-    return run(unsigned, args.onOptimistic)
+    let replaces: string | undefined
+    if (args.onSending) {
+      const echo = { ...unsigned, id: provisionalId(), sig: '' } as NostrEvent
+      replaces = echo.id
+      args.onSending(echo)
+    }
+    return run(unsigned, args.onOptimistic, { replaces })
   }
 
   async function publishTopic(args: {
@@ -388,14 +417,19 @@ export function usePublisher() {
   async function run(
     unsigned: UnsignedEvent,
     onOptimistic?: (ev: NostrEvent, replacedId?: string) => void,
+    /**
+     * `replaces` : id déjà à l'écran que cet envoi supplante. Deux origines, un
+     * seul mécanisme — l'écho provisoire posé au clic (`onSending`), et le
+     * renvoi après refus de PoW, dont le nouveau nonce donne un nouvel id.
+     */
     opts: { pow?: boolean; countsAsPost?: boolean; noRetry?: boolean; replaces?: string } = {},
   ): Promise<PublishOutcome | null> {
     publishing.value = true
     lastError.value = null
     try {
       const { event, firstAck, settled, pow } = await finalizeAndPublish(unsigned, opts.pow !== false)
-      // Au renvoi, l'id a changé (nouveau nonce) : on signale l'ancien pour que
-      // l'affichage le remplace au lieu d'en garder deux.
+      // L'id définitif n'apparaît qu'ici : on signale celui qu'il remplace pour
+      // que l'affichage échange la rangée au lieu d'en garder deux.
       onOptimistic?.(event, opts.replaces)
       miner.reset()
 

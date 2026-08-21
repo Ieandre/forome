@@ -9,6 +9,7 @@
       'msg--root': post.root,
       'msg--own': own,
       'msg--pending': state === 'pending',
+      'msg--unsent': unsent,
       'msg--failed': state === 'failed',
     }"
   >
@@ -146,9 +147,13 @@
       <!-- Numérotation LOCALE (spec §6.4) : ce n'est plus une preuve, c'est
            une commodité d'affichage. Le lien copié désigne le message par son id. -->
       <Hint
-        :text="`copier le permalien — le nº ${post.index} est l'ordre d'affichage ici, il n'est pas stable d'un client à l'autre`"
+        :text="
+          unsent
+            ? 'ce message n’a pas encore d’identifiant — une seconde'
+            : `copier le permalien — le nº ${post.index} est l'ordre d'affichage ici, il n'est pas stable d'un client à l'autre`
+        "
       >
-        <button type="button" class="msg__seq mono" @click="copyPermalink">
+        <button type="button" class="msg__seq mono" :disabled="unsent" @click="copyPermalink">
           {{ copied ? 'copié' : `#${post.index}` }}
         </button>
       </Hint>
@@ -248,8 +253,13 @@
         <div v-if="!compact" class="msg__actions">
           <span v-if="flash" class="msg__flash">{{ flash }}</span>
 
-          <Hint v-if="!veiled" text="citer ce message dans ta réponse">
-            <button type="button" class="msg__act" @click="emit('reply', post.id)">Citer</button>
+          <Hint
+            v-if="!veiled"
+            :text="unsent ? 'ce message n’a pas encore d’identifiant — une seconde' : 'citer ce message dans ta réponse'"
+          >
+            <button type="button" class="msg__act" :disabled="unsent" @click="emit('reply', post.id)">
+              Citer
+            </button>
           </Hint>
 
           <!-- « Modifier » vit dans la rangée permanente avec « Citer », jamais
@@ -262,16 +272,18 @@
           <Hint
             v-if="own && !veiled"
             :text="
-              locked
-                ? 'topic verrouillé : les relais n’acceptent plus rien dessus, corrections comprises'
-                : 'corriger ce message — la version d’origine restera lisible'
+              unsent
+                ? 'ce message n’a pas encore d’identifiant — une seconde'
+                : locked
+                  ? 'topic verrouillé : les relais n’acceptent plus rien dessus, corrections comprises'
+                  : 'corriger ce message — la version d’origine restera lisible'
             "
           >
             <button
               type="button"
               class="msg__act"
               :class="{ 'msg__act--on': editing }"
-              :disabled="locked"
+              :disabled="locked || unsent"
               @click="toggleEdit"
             >
               Modifier
@@ -387,7 +399,7 @@ import { ref, computed, provide } from 'vue'
 import { relativeTime, forumTime, absoluteTime, shortId, quotePreview } from '~/utils/format'
 import { npubFor, topicTitle } from '~/utils/nostr'
 import { topicPath } from '~/utils/permalink'
-import type { OwnState, Post, QuotedPost } from '~/types/nostr'
+import { isProvisional, type OwnState, type Post, type QuotedPost } from '~/types/nostr'
 import { ROLE_BADGES } from '~/types/moderation'
 import { parseRichText, hasMarkup } from '~/utils/richtext'
 
@@ -456,6 +468,18 @@ const copied = ref(false)
 
 /** Encart ouvert sous les actions : signalement, modération, ou historique. */
 const panel = ref<'report' | 'moderate' | 'history' | null>(null)
+
+/**
+ * Rangée affichée avant que son event existe : le fil montre le message dès le
+ * clic sur « Poster », donc pendant un instant il n'a pas encore d'id.
+ *
+ * Citer et corriger sont désactivés le temps que ça dure. Les deux écriraient un
+ * tag pointant l'id provisoire — un lien vers un event qui n'existera jamais,
+ * publié sur un réseau qui ne sait pas effacer. Désactivés et non masqués : la
+ * rangée d'actions ne doit pas se réorganiser sous le doigt une demi-seconde
+ * après l'envoi.
+ */
+const unsent = computed(() => isProvisional(props.post.id))
 
 /**
  * Retrait par l'auteur : une correction dont le texte est vide (§2.5). Ce n'est
@@ -827,9 +851,21 @@ async function copyPermalink(): Promise<void> {
   color: var(--ink-3);
   transition: background 0.13s ease, color 0.13s ease;
 }
-.msg__seq:hover {
+.msg__seq:hover:not(:disabled) {
   background: var(--surface-3);
   color: var(--ink);
+}
+
+/*
+ * Rangée posée avant que son event existe : ses actions sont neutralisées le
+ * temps qu'il ait un id, mais elles ne doivent RIEN montrer. Les griser puis les
+ * rallumer une demi-seconde plus tard ferait clignoter la rangée que l'auteur
+ * vient de créer — exactement ce que l'affichage immédiat cherchait à éviter.
+ */
+.msg--unsent .msg__act:disabled,
+.msg--unsent .msg__seq:disabled {
+  opacity: 1;
+  cursor: default;
 }
 
 /* « modifié » : le poids d'une mention, pas d'un badge. Il vit à côté de l'heure

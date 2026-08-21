@@ -71,6 +71,7 @@
         :reply-to="replyTo"
         :participants="feedEl?.participants ?? []"
         @posted="onPosted"
+        @unsent="onPostUnsent"
         @settled="onPostSettled"
         @cancel-reply="replyTo = null"
       />
@@ -160,19 +161,31 @@ const modPanel = ref(false)
 const replyTo = ref<NostrEvent | null>(null)
 const feedEl = ref<{
   pushOwnPost: (ev: NostrEvent, replacedId?: string) => void
+  dropPost: (id: string) => void
   markOwnState: (id: string, state: 'pending' | 'failed' | null) => void
   /** Les gens du fil, pour la complétion `@…` du composeur. */
   participants: string[]
 } | null>(null)
 
 /**
- * Publication optimiste : le fil affiche le message avant la diffusion (§6.3),
- * marqué « envoi… » jusqu'à ce qu'un relais l'accepte.
+ * Publication optimiste : le fil affiche le message dès le clic, avant même
+ * qu'il soit miné et signé (§6.3), marqué « envoi… » jusqu'à ce qu'un relais
+ * l'accepte. Le second appel apporte l'event réel et l'id provisoire qu'il
+ * remplace.
  */
 function onPosted(ev: NostrEvent, replacedId?: string): void {
   feedEl.value?.pushOwnPost(ev, replacedId)
   feedEl.value?.markOwnState(ev.id, 'pending')
   replyTo.value = null
+}
+
+/**
+ * L'envoi n'a jamais produit d'event. Contrairement au refus des relais, il n'y
+ * a rien à marquer « non publié » : le message n'a pas d'id, donc pas
+ * d'existence — la rangée s'en va, et le composeur a déjà repris le texte.
+ */
+function onPostUnsent(id: string): void {
+  feedEl.value?.dropPost(id)
 }
 
 /** Verdict de publication, connu après coup puisqu'on ne l'attend plus. */

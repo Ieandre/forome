@@ -8,7 +8,7 @@
  * `created_at`. Chaque frappe invalide tout le travail déjà fait.
  *
  * Ce qui est possible, et ce qui est fait ici : **miner spéculativement sur le
- * brouillon dès que la frappe s'arrête** (~400 ms). Les gens marquent une pause
+ * brouillon dès que la frappe s'arrête** (~150 ms). Les gens marquent une pause
  * avant d'appuyer sur Entrée, donc dans le cas courant le travail est déjà fait
  * au moment de l'envoi et la PoW est invisible. Sinon on mine à l'envoi, ce qui
  * coûte quelques centaines de millisecondes.
@@ -18,6 +18,11 @@
  * C'est sans conséquence (l'auteur déclare son heure de toute façon, §2.4), mais
  * au-delà de `MAX_SPECULATION_AGE_S` on rejette et on remine — un horodatage
  * franchement périmé se ferait refuser par la fenêtre de tolérance d'un relais.
+ *
+ * Rien de tout ça n'est un chemin critique côté écran : le fil affiche la
+ * réponse **au clic**, avant le minage (voir `provisionalId` et `run()` dans
+ * `usePublisher`). La spéculation ne sert donc plus à masquer une attente, mais
+ * à raccourcir le temps pendant lequel la rangée affichée n'a pas encore d'id.
  */
 import { ref, watch } from 'vue'
 import type { UnsignedEvent } from 'nostr-tools/pure'
@@ -45,7 +50,17 @@ const FALLBACK_DIFFICULTY = 14
  * avant Entrée, et rater la spéculation fait payer le minage à l'envoi.
  */
 const DEBOUNCE_MS = 150
-const MAX_SPECULATION_AGE_S = 120
+/**
+ * Fraîcheur au-delà de laquelle un travail spéculatif est jeté et le brouillon
+ * reminé.
+ *
+ * Ce n'est pas la tolérance des relais qui fixe la valeur (elle est bien plus
+ * large) mais **l'ordre du fil** : `created_at` figé veut dire message antidaté,
+ * et un message antidaté se range avant des messages écrits avant lui au premier
+ * rechargement. Reminer coûte ~120 ms une fois ; se voir remonter au milieu d'un
+ * fil est définitif. 30 s couvre largement « je tape, je relis, j'envoie ».
+ */
+const MAX_SPECULATION_AGE_S = 30
 
 export interface MinedEvent extends UnsignedEvent {
   id: string
@@ -53,17 +68,28 @@ export interface MinedEvent extends UnsignedEvent {
 
 interface Speculation {
   sig: string
-  event: MinedEvent
+  /** en vol tant que le worker n'a pas rendu — `mineFor` s'y raccroche */
+  event: Promise<MinedEvent>
   at: number
 }
 
 /**
- * Signature de tout ce qui influence l'id **sauf** le nonce. Deux brouillons de
- * même signature partagent le même travail de minage.
+ * Signature de tout ce qui influence l'id **sauf** le nonce et `created_at`.
+ * Deux brouillons de même signature partagent le même travail de minage.
+ *
+ * ⚠️ `created_at` en est exclu **volontairement**, et c'est ce qui fait vivre
+ * tout le minage spéculatif : il change à chaque seconde, alors que le brouillon
+ * spéculé et le brouillon envoyé sont construits à deux instants différents. Le
+ * garder ici faisait rater la spéculation dès que l'envoi tombait dans une autre
+ * seconde que la frappe — donc la plupart du temps, en silence, et le minage
+ * était systématiquement repayé à l'appui sur « Poster ».
+ *
+ * La contrepartie est l'horodatage figé décrit en tête de fichier ; c'est
+ * `MAX_SPECULATION_AGE_S` qui la borne.
  */
 function draftSignature(u: UnsignedEvent): string {
   const tags = u.tags.filter((t) => t[0] !== 'nonce')
-  return JSON.stringify([u.pubkey, u.kind, u.created_at, tags, u.content])
+  return JSON.stringify([u.pubkey, u.kind, tags, u.content])
 }
 
 /**
@@ -175,7 +201,15 @@ export function usePowMiner() {
     return mineNow(unsigned, d, 'mineFixed')
   }
 
-  /** Minage spéculatif sur le brouillon courant, debouncé. */
+  /**
+   * Minage spéculatif sur le brouillon courant, debouncé.
+   *
+   * La spéculation est enregistrée **dès le lancement**, pas à la résolution :
+   * l'envoi tombe souvent pendant que le worker tourne encore, et n'enregistrer
+   * qu'à la fin y lançait un second minage concurrent du premier — l'utilisateur
+   * attendait alors le plus lent des deux, exactement dans le cas où la
+   * spéculation était censée l'aider.
+   */
   function speculate(build: () => UnsignedEvent | null): void {
     if (debounceTimer) clearTimeout(debounceTimer)
     debounceTimer = setTimeout(() => {
@@ -183,29 +217,37 @@ export function usePowMiner() {
       const unsigned = build()
       if (!unsigned || !unsigned.content.trim()) return
       const sig = draftSignature(unsigned)
-      if (speculation?.sig === sig) return
-      void mineNow(unsigned)
-        .then((event) => {
-          speculation = { sig, event, at: Date.now() / 1000 }
-        })
-        .catch(() => {
-          speculation = null
-        })
+      // Même brouillon ET travail encore frais : rien à refaire. La fraîcheur est
+      // testée ici aussi, sinon un brouillon revenu à son texte d'il y a une
+      // minute (une frappe puis un effacement) garderait une spéculation que
+      // `mineFor` jettera pour son âge, sans jamais la remplacer.
+      if (speculation?.sig === sig && Date.now() / 1000 - speculation.at < MAX_SPECULATION_AGE_S) return
+      const event = mineNow(unsigned)
+      const spec: Speculation = { sig, event, at: Date.now() / 1000 }
+      speculation = spec
+      event.catch(() => {
+        if (speculation === spec) speculation = null
+      })
     }, DEBOUNCE_MS)
   }
 
   /**
    * Récupère le travail spéculatif s'il correspond exactement au brouillon
    * envoyé et qu'il n'est pas périmé ; sinon mine maintenant.
+   *
+   * ⚠️ Le nonce miné l'a été sur le `created_at` de la spéculation, pas sur
+   * celui du brouillon reçu ici : c'est l'event spéculé qui part, tel quel.
+   * Recopier l'horodatage de l'appelant par-dessus invaliderait la PoW.
    */
   async function mineFor(unsigned: UnsignedEvent): Promise<MinedEvent> {
     const sig = draftSignature(unsigned)
     const spec = speculation
-    if (spec && spec.sig === sig && Date.now() / 1000 - spec.at < MAX_SPECULATION_AGE_S) {
-      speculation = null
-      return spec.event
-    }
     speculation = null
+    if (spec && spec.sig === sig && Date.now() / 1000 - spec.at < MAX_SPECULATION_AGE_S) {
+      // Un échec du worker sur le travail spéculatif ne doit pas faire échouer
+      // la publication : on remine.
+      return spec.event.catch(() => mineNow(unsigned))
+    }
     return mineNow(unsigned)
   }
 

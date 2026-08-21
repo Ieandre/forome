@@ -198,7 +198,13 @@ const props = defineProps<{
   /** Les gens du fil ouvert, proposés en premier à la frappe `@…`. */
   participants?: string[]
 }>()
-const emit = defineEmits<{ posted: [event: NostrEvent, replacedId?: string]; settled: [id: string, accepted: boolean]; cancelReply: [] }>()
+const emit = defineEmits<{
+  posted: [event: NostrEvent, replacedId?: string]
+  /** Rien n'est parti : le fil retire la rangée provisoire posée par `posted`. */
+  unsent: [id: string]
+  settled: [id: string, accepted: boolean]
+  cancelReply: []
+}>()
 
 const identity = useIdentityStore()
 const profiles = useProfileStore()
@@ -218,6 +224,7 @@ const editorEl = ref<{
   insertLink: () => void
   insertImage: (img: ImageMeta) => void
   clear: () => void
+  seed: (markup: string) => void
   focus: () => void
 } | null>(null)
 const fileEl = ref<HTMLInputElement | null>(null)
@@ -444,35 +451,67 @@ async function attachImages(files: File[]): Promise<void> {
 async function send(): Promise<void> {
   if (!canSend.value) return
   const content = draft.value
+  /** Rangée provisoire posée dans le fil, à retirer si l'envoi n'aboutit pas. */
+  let echoId: string | null = null
+
   const outcome = await publisher.publishReply({
     content,
     rootId: props.rootId,
     root: props.root,
     parent: props.replyTo ?? null,
     tags: imageTags.value,
-    // affichage optimiste : le fil montre le message avant la diffusion (§6.3)
-    onOptimistic: (ev, replacedId) => {
+    /*
+     * Le message part à l'écran AU CLIC, avant le minage et la signature (§6.3).
+     * C'est le seul moment que l'utilisateur relie à son geste : tout ce qui
+     * arrive après, il l'attribue au réseau et non à lui — mais un composeur
+     * encore plein pendant que « ça réfléchit », il l'attribue à un clic raté,
+     * et il reclique.
+     */
+    onSending: (ev) => {
+      echoId = ev.id
       draft.value = ''
       editorEl.value?.clear()
-      images.reset()
       stickerOpen.value = false
       // Replié explicitement, et pas laissé au `focusout` : sur Safari le blur
       // du champ a eu lieu AVANT le clic sur « Poster » (voir `onDocPointerDown`),
       // donc plus aucun focus ne sortira de la boîte et elle resterait ouverte
       // pour toujours après l'envoi. Le message est parti : on revient au fil.
       expanded.value = false
-      emit('posted', ev, replacedId)
+      emit('posted', ev)
     },
+    // L'event réel : le fil échange la rangée provisoire contre celle qui porte
+    // le vrai id, à la même place et sous le même numéro.
+    onOptimistic: (ev, replacedId) => emit('posted', ev, replacedId),
   })
-  if (outcome) {
-    lastPow.value = outcome.pow
-    // Le verdict arrive après : on le renvoie au fil pour marquer le post
-    // « non publié » si personne ne l'a accepté.
-    const settled = outcome.settled
-    if (settled) void settled.then((r) => emit('settled', outcome.event.id, r.accepted.length > 0))
-    else emit('settled', outcome.event.id, outcome.result.accepted.length > 0)
+
+  if (!outcome) {
+    /*
+     * Échec AVANT signature — pas de clé, worker en échec, signeur qui refuse.
+     * Rien n'existe : ni event, ni id, ni trace nulle part. Il faut donc défaire
+     * l'écho, sinon le fil garde pour toujours une rangée « envoi… » qui ne
+     * deviendra jamais rien, et l'auteur a perdu son texte.
+     */
+    if (echoId) emit('unsent', echoId)
+    draft.value = content
+    // `seed` est réservé à l'ouverture d'un éditeur vierge — ce qu'il est ici :
+    // `clear()` vient de le vider et personne n'a repris la frappe.
+    editorEl.value?.seed(content)
+    expanded.value = true
+    void nextTick(() => editorEl.value?.focus())
+    return
   }
-  // échec avant signature : le texte reste dans l'éditeur, rien n'a été vidé
+
+  // Les images ne sont lâchées qu'ici : sur l'échec ci-dessus, le texte revient
+  // avec ses `imeta`, donc un renvoi repart complet plutôt qu'amputé des
+  // dimensions (le fil ne réserverait plus la place des images au chargement).
+  images.reset()
+
+  lastPow.value = outcome.pow
+  // Le verdict arrive après : on le renvoie au fil pour marquer le post
+  // « non publié » si personne ne l'a accepté.
+  const settled = outcome.settled
+  if (settled) void settled.then((r) => emit('settled', outcome.event.id, r.accepted.length > 0))
+  else emit('settled', outcome.event.id, outcome.result.accepted.length > 0)
 }
 
 /**

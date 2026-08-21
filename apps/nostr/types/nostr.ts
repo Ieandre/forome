@@ -227,3 +227,25 @@ export interface TickPayload {
 
 /** D'où vient le classement affiché. */
 export type RankingSource = 'indexer' | 'local'
+
+/**
+ * Id d'un message affiché **avant d'exister** : le fil montre la réponse dès le
+ * clic, pendant que la PoW se mine et que la signature se calcule. Il n'y a donc
+ * pas encore d'id — un event n'en a qu'une fois son contenu figé.
+ *
+ * Le préfixe n'est pas décoratif : un id d'event est 64 caractères hexadécimaux,
+ * donc `echo:` ne peut collisionner avec rien, et une rangée provisoire se
+ * reconnaît partout où il faut refuser de la citer ou de la corriger — les tags
+ * d'une réponse pointeraient un id qui n'existera jamais, sur un réseau qui ne
+ * sait pas effacer.
+ */
+const PROVISIONAL_PREFIX = 'echo:'
+let provisionalSeq = 0
+
+export function provisionalId(): string {
+  return `${PROVISIONAL_PREFIX}${++provisionalSeq}`
+}
+
+export function isProvisional(id: string): boolean {
+  return id.startsWith(PROVISIONAL_PREFIX)
+}

@@ -163,7 +163,10 @@ function frameStyle(href: string): Record<string, string> | undefined {
   if (!m) return undefined
   return {
     aspectRatio: `${m.width} / ${m.height}`,
-    width: `min(100%, ${m.width}px)`,
+    // Le plafond de hauteur borne aussi la LARGEUR : `aspect-ratio` ne
+    // recalcule pas la largeur quand `max-height` écrête, donc sans ce terme le
+    // cadre reste large et l'image y flotte à gauche, bande morte à droite.
+    width: `min(100%, ${m.width}px, calc(var(--rt-media-max-h) * ${m.width} / ${m.height}))`,
   }
 }
 </script>
@@ -221,8 +224,11 @@ function frameStyle(href: string): Record<string, string> | undefined {
 /*
  * L'image est bornée en hauteur, pas seulement en largeur : une capture de
  * téléphone en 9:16 occuperait sinon deux écrans à elle seule et ferait du fil
- * une pile d'images séparées par du texte. 360 px la laissent lisible tout en
+ * une pile d'images séparées par du texte. 260 px la laissent lisible tout en
  * gardant le message autour d'elle — le clic ouvre l'originale en taille réelle.
+ *
+ * Le plafond vit dans une variable parce que `frameStyle` en a besoin aussi,
+ * pour en déduire la largeur du cadre. Les deux ne peuvent pas diverger.
  */
 .rt-media {
   /* `inline-block` : l'image occupe la place que l'auteur lui a donnée dans le
@@ -230,10 +236,11 @@ function frameStyle(href: string): Record<string, string> | undefined {
      central sur ce genre de forum. Une photo, elle, est large : `frameStyle` lui
      donne `min(100%, Npx)`, donc elle remplit la colonne et se retrouve seule sur
      sa ligne sans qu'on ait à la distinguer d'un sticker. */
+  --rt-media-max-h: 260px;
   display: inline-block;
   vertical-align: bottom;
   max-width: 100%;
-  max-height: 360px;
+  max-height: var(--rt-media-max-h);
   margin: 2px;
   border-radius: var(--r-control, 9px);
   overflow: hidden;
@@ -245,7 +252,7 @@ function frameStyle(href: string): Record<string, string> | undefined {
   display: block;
   width: 100%;
   height: 100%;
-  max-height: 360px;
+  max-height: var(--rt-media-max-h);
   object-fit: contain;
   object-position: left top;
   border: 1px solid var(--line-soft, currentColor);

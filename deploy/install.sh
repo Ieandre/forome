@@ -64,19 +64,28 @@ set -a; source "$DATA/web.env"; set +a
 npm run build
 
 echo "=== Services systemd ==="
-sudo cp "$ROOT"/deploy/systemd/*.service /etc/systemd/system/
+sudo cp "$ROOT"/deploy/systemd/*.service "$ROOT"/deploy/systemd/*.timer /etc/systemd/system/
 sudo systemctl daemon-reload
 # enable --now ne redémarre pas un service déjà actif : sans restart, une
 # relance d'install.sh (ex. changement d'hôte) laisserait l'ancien build servi.
 sudo systemctl enable forome-strfry forome-indexer forome-web
 sudo systemctl restart forome-strfry forome-indexer forome-web
+# Le timer seulement : forome-backup.service est un oneshot, il est déclenché
+# par lui et n'a rien à faire dans les services activés au démarrage.
+sudo systemctl enable --now forome-backup.timer
 
 echo "=== Caddy ==="
 sed "s|__HOST__|$HOST|g" "$ROOT/deploy/Caddyfile" | sudo tee /etc/caddy/Caddyfile >/dev/null
 sudo systemctl reload caddy
+
+echo "=== Première sauvegarde ==="
+# Une sauvegarde jamais lancée n'est pas une sauvegarde. Sans faire échouer la
+# mise en service pour autant : le site debout vaut mieux que rien.
+bash "$ROOT/deploy/backup.sh" || echo "⚠️  Échec — voir deploy/backup.sh et journalctl -u forome-backup"
 
 echo
 echo "=== Terminé ==="
 echo "Site   : https://$HOST"
 echo "Relais : wss://$HOST/relay"
 echo "Statut : systemctl status forome-strfry forome-indexer forome-web caddy"
+echo "Sauveg.: systemctl list-timers forome-backup.timer  —  rapatrier : npm run backup:fetch -- <hôte ssh>"

@@ -28,8 +28,12 @@ npm ci
 set -a; source "$DATA/web.env"; set +a
 npm run build
 
-sudo cp "$ROOT"/deploy/systemd/*.service /etc/systemd/system/
+sudo cp "$ROOT"/deploy/systemd/*.service "$ROOT"/deploy/systemd/*.timer /etc/systemd/system/
 sudo systemctl daemon-reload
+# Aussi ici, et pas seulement dans install.sh : install.sh ne se rejoue pas sur
+# une VM déjà en service, donc c'est par un déploiement ordinaire que le timer
+# arrive sur une machine qui ne l'avait pas.
+sudo systemctl enable --now forome-backup.timer
 # strfry aussi : la policy (packages/relay-policy) a pu changer avec le pull.
 sudo systemctl restart forome-strfry forome-indexer forome-web
 

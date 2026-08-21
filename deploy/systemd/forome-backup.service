@@ -1,0 +1,10 @@
+[Unit]
+Description=Forome - sauvegarde du relais (dump jsonl)
+After=forome-strfry.service
+
+[Service]
+Type=oneshot
+User=ubuntu
+Environment=HOME=/home/ubuntu
+WorkingDirectory=/home/ubuntu/forome
+ExecStart=/bin/bash /home/ubuntu/forome/deploy/backup.sh

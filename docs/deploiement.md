@@ -12,6 +12,7 @@ Une VM Oracle (Ubuntu 24.04 aarch64), trois services systemd et Caddy devant :
 | `forome-strfry` | le relais, sur `127.0.0.1:7777`, avec la policy en plugin |
 | `forome-indexer` | le tick signé (kind 30078) |
 | `forome-web` | le serveur Nitro du client, sur `127.0.0.1:3000` |
+| `forome-backup.timer` | un dump jsonl du relais par jour, quatorze gardés |
 | Caddy | TLS, `/relay` → strfry, tout le reste → Nitro |
 
 **Rien de vivant n'est dans le dépôt.** La clé de l'indexeur, la config publique
@@ -23,6 +24,7 @@ déploiement d'écraser le dépôt sans rien perdre :
 ~/forome-data/indexer.pubkey
 ~/forome-data/web.env         # NUXT_PUBLIC_* — la seule source de vérité pour l'hôte
 ~/forome-data/strfry-db/
+~/forome-data/backups/        # les dumps du relais (voir « Sauvegardes »)
 ```
 
 ## Le pipeline
@@ -170,6 +172,60 @@ existante. C'est lui qui écrit `web.env`, donc lui qui fixe l'hôte : rien n'es
 codé en dur dans le dépôt, et `healthcheck.sh` relit ce fichier plutôt que de
 supposer un domaine.
 
+## Sauvegardes
+
+`forome-backup.timer` lance [`deploy/backup.sh`](../deploy/backup.sh) une fois
+par jour : un `strfry export` complet, compressé et daté dans
+`~/forome-data/backups/`, quatorze gardés. Sans arrêt de service — l'export lit
+dans une transaction LMDB, le relais continue de répondre pendant ce temps.
+
+**Un dump jsonl, pas une copie de `strfry-db/`.** Une copie de LMDB ne se lit
+qu'avec la même version de strfry, et se copier pendant qu'on écrit dedans ne
+donne rien de fiable ; le jsonl se relit avec `strfry import`, avec n'importe
+quel outil Nostr, et se vérifie signature par signature.
+
+**Deux moitiés, et une seule est automatique.** Le dump reste sur la machine
+qu'il sauvegarde : il protège d'une base corrompue ou d'un `strfry delete` trop
+large, pas de la VM perdue. La moitié qui compte se lance **depuis ailleurs** :
+
+```bash
+npm run backup:fetch -- forome            # → ~/forome-backups
+```
+
+C'est un tirage et pas un envoi, à dessein : la VM n'a ainsi ni clé ni accès
+vers l'endroit où vivent les sauvegardes, donc une VM compromise ne l'est pas.
+En contrepartie, personne ne le lance à ta place — il n'y a pas de sauvegarde
+hors de la VM tant que cette commande n'a pas tourné.
+
+**Restaurer** (vérifié le 2026-08-21 sur une base jetable) :
+
+```bash
+sudo systemctl stop forome-strfry
+gzip -dc ~/forome-data/backups/dernier.jsonl.gz \
+  | strfry --config ~/forome/deploy/strfry.conf import
+sudo systemctl start forome-strfry
+```
+
+`import` est idempotent — un ré-import annonce `0 added, 8 dups` — donc un dump
+se rejoue sans risque, et se fusionne dans une base qui a déjà du contenu. À
+relais arrêté : LMDB n'accepte qu'un écrivain, et le jour d'une restauration
+n'est pas celui où l'on essaie à chaud.
+
+**Ce que le dump ne contient pas :** `indexer.env`, la nsec de l'indexeur. Une
+clé n'a rien à faire dans une archive qui tourne toute seule chaque nuit — à
+copier une fois, à la main, là où tu gardes tes secrets. La perdre coûte une
+identité d'indexeur à regénérer (`install.sh` en refait une, et le client
+retombe sur un classement calculé localement le temps que
+`NUXT_PUBLIC_INDEXER_PUBKEY` soit republiée), pas le contenu du forum.
+
+⚠️ **Le dump contient tout ce que le relais sert**, DM chiffrés compris (kinds 4
+et 1059). Ça reste une base de données, à traiter comme telle là où elle
+atterrit.
+
+`healthcheck.sh` affiche l'âge du dernier dump mais **n'échoue jamais** dessus :
+une sauvegarde qui vieillit est un problème à régler, pas une raison de refuser
+un déploiement — au-delà de 48 h la ligne porte un ⚠️.
+
 ## Ce que le pipeline ne fait pas
 
 - **Aucun test bout en bout contre le vrai relais.** `smoke:strfry`,
@@ -178,7 +234,9 @@ supposer un domaine.
   Compiler strfry sur un runner à chaque push coûterait plus que ce qu'il
   rapporte tant qu'un seul relais est déployé.
 - **Aucune réplication.** Un seul relais reste un point de censure unique —
-  c'est un manque de l'architecture, pas du pipeline (voir le README).
+  c'est un manque de l'architecture, pas du pipeline (voir le README). Les
+  sauvegardes ci-dessus ne la remplacent pas : elles rendent la veille, elles ne
+  gardent pas le forum debout.
 - **L'indexeur n'est vérifié que par systemd.** Le client et le relais ont un
   port qu'on peut interroger, lui n'a rien : un `forome-indexer` qui redémarre
   en boucle peut passer pour actif entre deux crashs. Ce qui le prouverait

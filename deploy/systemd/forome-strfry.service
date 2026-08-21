@@ -8,7 +8,9 @@ User=ubuntu
 # HOME requis : run-strfry.sh passe par npx, qui lit le cache npm de l'usager.
 Environment=HOME=/home/ubuntu
 WorkingDirectory=/home/ubuntu/forome-data
-ExecStart=/usr/local/bin/strfry --config /home/ubuntu/forome/deploy/strfry.conf relay
+# La config DÉRIVÉE, pas `deploy/strfry.conf` : celle du dépôt est un gabarit
+# (`__HOST__`), et `install.sh` écrit ici la version où l'hôte est résolu.
+ExecStart=/usr/local/bin/strfry --config /home/ubuntu/forome-data/strfry.conf relay
 Restart=on-failure
 RestartSec=3
 LimitNOFILE=65536

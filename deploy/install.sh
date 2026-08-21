@@ -63,6 +63,13 @@ echo "=== Build du client ==="
 set -a; source "$DATA/web.env"; set +a
 npm run build
 
+echo "=== Config du relais ==="
+# Dérivée, jamais exécutée depuis le dépôt : l'AUTH NIP-42 doit comparer le tag
+# `relay` du client à NOTRE hôte, donc la config porte `__HOST__` et il faut le
+# résoudre ici. Sans ça, strfry réclame une AUTH que personne ne peut satisfaire
+# et les MP repartent en `auth-required` — écrits, jamais relus.
+sed "s|__HOST__|$HOST|g" "$ROOT/deploy/strfry.conf" > "$DATA/strfry.conf"
+
 echo "=== Services systemd ==="
 sudo cp "$ROOT"/deploy/systemd/*.service "$ROOT"/deploy/systemd/*.timer /etc/systemd/system/
 sudo systemctl daemon-reload

@@ -85,11 +85,38 @@ lancement dans une copie dérivée. Ne pas figer le chemin à la main — un dé
 déplacé laisserait un plugin introuvable, et strfry démarre quand même, en
 acceptant tout.
 
+### AUTH NIP-42, ou pourquoi les MP étaient muets
+
+strfry exige une AUTH pour lire les kinds de MP : `auth.restrictedReadKinds`
+vaut **« 4, 1059 » par défaut**, donc la règle s'applique même sans bloc `auth`.
+C'est la bonne règle — sans elle, n'importe qui moissonne les emballages de
+n'importe qui et sait qui reçoit des MP et quand, ce que le gift wrap est
+précisément censé cacher au relais.
+
+Le piège est ailleurs : `auth.serviceUrl` vide, strfry **réclame une AUTH qu'il
+ne peut pas valider**, et il n'annonce même pas le NIP 42 dans son document
+NIP-11. Vu du client, les MP partaient (2/2 emballages acceptés) et ne
+revenaient jamais. D'où `serviceUrl` dans nos deux configs — `ws://localhost:7778`
+en dev, `wss://__HOST__/relay` en prod, résolu par `install.sh`. Seul `hôte:port`
+est comparé : le schéma et le chemin sont ignorés des deux côtés.
+
+Second piège, côté client : strfry préfixe la raison du CLOSED par
+`ERROR: auth-required: …`, alors que la reprise automatique de `nostr-tools`
+exige `auth-required:` **en tête**. Elle ne se déclenche donc jamais, sans un
+mot dans la console. `stores/relays.ts` refait cette reprise (`answerAuth`), et
+c'est la seule souscription du projet qui s'authentifie — voir `authSigner` pour
+pourquoi les autres ne doivent pas.
+
 ## Vérifier
 
 ```sh
 npm run smoke:strfry    # exige que dev:strfry tourne
+npm run smoke:dm -- ws://localhost:7778
 ```
+⚠️ `smoke:dm` **sur les deux relais**. Son défaut vise le relais Node (7447),
+qui n'applique pas NIP-42 : lancé seulement là, il passe alors que les MP sont
+illisibles sur strfry, donc en prod. Sa sortie dit désormais lequel des deux on
+interroge (« lecture anonyme : 0 emballage(s) »).
 
 Il rejoue la policy **à travers strfry** et non par un pipe simulé, ce qui est
 une propriété différente de `smoke:policy` : c'est lui qui a attrapé le seul vrai

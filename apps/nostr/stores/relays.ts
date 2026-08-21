@@ -14,6 +14,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { SimplePool } from 'nostr-tools/pool'
 import type { Filter } from 'nostr-tools/filter'
+import type { EventTemplate, VerifiedEvent } from 'nostr-tools/pure'
 import type { NostrEvent } from '~/types/nostr'
 import {
   isLocalRelay,
@@ -37,7 +38,14 @@ export interface RelayInfo {
   name: string | null
   /** true = refuse les écritures d'un non-abonné */
   paymentRequired: boolean
-  /** true = exige NIP-42, que ce client n'implémente pas */
+  /**
+   * `limitation.auth_required` du document NIP-11, purement informatif.
+   *
+   * ⚠️ Ne pas s'en servir pour décider de s'authentifier : strfry n'émet jamais
+   * ce champ alors qu'il exige bel et bien l'AUTH pour lire les kinds de MP. Un
+   * relais peut donc réclamer NIP-42 sans que rien ici ne l'annonce — c'est le
+   * refus `auth-required` qui fait autorité, et lui seul (voir `authSigner`).
+   */
   authRequired: boolean
   /** difficulté de PoW annoncée, 0 si aucune */
   minPow: number
@@ -350,33 +358,120 @@ export const useRelayStore = defineStore('relays', () => {
   }
 
   /**
+   * Signature du défi NIP-42, **sur demande explicite seulement**.
+   *
+   * Pourquoi ce n'est pas branché par défaut sur toutes les souscriptions : un
+   * relais peut envoyer un défi pour n'importe quel filtre. Signer sans y penser
+   * revient à lui offrir notre clé publique pour un simple parcours du forum, et
+   * à lier ce parcours à une identité — alors que lire n'a jamais rien exigé.
+   * Un relais tiers hostile n'aurait qu'à demander.
+   *
+   * Le seul cas où l'AUTH ne coûte rien est celui des MP : le filtre porte déjà
+   * notre clé en `#p`, donc le relais la connaît de toute façon. C'est pour ça
+   * que `stores/dms.ts` est le seul appelant à passer `authenticate`.
+   *
+   * `nostr-tools` construit le gabarit (kind 22242, tags `relay` et `challenge`)
+   * — on ne fournit que la signature. La reprise de la souscription, elle, n'est
+   * pas automatique en pratique : voir `answerAuth`.
+   */
+  function authSigner(): ((evt: EventTemplate) => Promise<VerifiedEvent>) | undefined {
+    const identity = useIdentityStore()
+    if (!identity.pubkey) return undefined
+    return (evt) => identity.sign(evt)
+  }
+
+  /**
+   * Répond au défi NIP-42 des relais qui ont refusé, puis rend la main.
+   *
+   * ⚠️ **`nostr-tools` a déjà cette reprise, et elle ne se déclenche jamais chez
+   * nous** : elle exige que la raison du CLOSED commence par « auth-required: »
+   * (la forme que NIP-01 recommande), or strfry la préfixe par « ERROR: »
+   * (`RelayServer.h`, `sendClosedError`). La comparaison échoue en silence, la
+   * souscription reste fermée, et les MP étaient acceptés à l'écriture puis
+   * jamais relus. D'où cette reprise à nous, qui compare sans supposer la forme.
+   *
+   * `relay.auth()` est idempotent par connexion (il renvoie l'AUTH déjà en vol),
+   * et rejette si aucun défi n'est arrivé — d'où `allSettled` : un relais qui n'a
+   * rien demandé n'a rien à signer.
+   */
+  async function answerAuth(
+    urls: string[],
+    signer: (evt: EventTemplate) => Promise<VerifiedEvent>,
+  ): Promise<void> {
+    const p = ensurePool()
+    await Promise.allSettled(
+      urls.map(async (url) => {
+        const relay = await p.ensureRelay(url)
+        await relay.auth(signer)
+      }),
+    )
+  }
+
+  /**
    * Souscription live. `onevent` ne reçoit chaque `id` qu'une fois, quel que
    * soit le nombre de relais qui l'ont envoyé.
+   *
+   * `authenticate` répond à un refus `auth-required` par une AUTH NIP-42 — à ne
+   * demander que si le filtre ne peut de toute façon pas être anonyme. Voir
+   * `authSigner`.
    */
   function subscribe(
     filter: Filter,
     handlers: { onevent: (ev: NostrEvent) => void; oneose?: () => void },
     label?: string,
+    opts?: { authenticate?: boolean },
   ): SubHandle {
     if (!import.meta.client) return { close: () => {} }
     const p = ensurePool()
     const seen = new Set<string>()
-    // `activeRelays()` et non `relays.value`, pour la même raison que `query` :
-    // un relais dont la connexion a définitivement échoué n'apportera rien, et
-    // le pool paierait une tentative de reconnexion par souscription.
-    const closer = p.subscribe(activeRelays(), filter, {
-      label,
-      onevent(ev) {
-        if (seen.has(ev.id)) return
-        seen.add(ev.id)
-        eventsSeen.value++
-        handlers.onevent(ev)
+    const signer = opts?.authenticate ? authSigner() : undefined
+
+    let closer: SubHandle | null = null
+    let stopped = false
+    // Une seule reprise : si le relais referme encore après une AUTH réussie,
+    // c'est qu'il refuse ce filtre pour une autre raison, et réessayer en
+    // boucle ne ferait que marteler la connexion.
+    let retried = false
+
+    const start = (): void => {
+      if (stopped) return
+      // `activeRelays()` et non `relays.value`, pour la même raison que `query` :
+      // un relais dont la connexion a définitivement échoué n'apportera rien, et
+      // le pool paierait une tentative de reconnexion par souscription.
+      closer = p.subscribe(activeRelays(), filter, {
+        label,
+        // Pour un relais conforme à NIP-01, la reprise intégrée suffit ; pour
+        // strfry, c'est `onclose` juste en dessous qui fait le travail.
+        onauth: signer,
+        onevent(ev) {
+          if (seen.has(ev.id)) return
+          seen.add(ev.id)
+          eventsSeen.value++
+          handlers.onevent(ev)
+        },
+        oneose() {
+          handlers.oneose?.()
+        },
+        onclose(closes) {
+          if (!signer || retried || stopped) return
+          const refused = closes.filter((c) => c.reason.includes('auth-required'))
+          if (refused.length === 0) return
+          retried = true
+          void answerAuth(
+            refused.map((c) => c.url),
+            signer,
+          ).then(start)
+        },
+      })
+    }
+
+    start()
+    return {
+      close: () => {
+        stopped = true
+        closer?.close()
       },
-      oneose() {
-        handlers.oneose?.()
-      },
-    })
-    return { close: () => closer.close() }
+    }
   }
 
   /**

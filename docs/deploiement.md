@@ -202,7 +202,7 @@ hors de la VM tant que cette commande n'a pas tourné.
 ```bash
 sudo systemctl stop forome-strfry
 gzip -dc ~/forome-data/backups/dernier.jsonl.gz \
-  | strfry --config ~/forome/deploy/strfry.conf import
+  | strfry --config ~/forome-data/strfry.conf import
 sudo systemctl start forome-strfry
 ```
 

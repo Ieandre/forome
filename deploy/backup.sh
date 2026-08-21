@@ -18,7 +18,9 @@ set -euo pipefail
 
 DATA="$HOME/forome-data"
 DEST="$DATA/backups"
-CONF="$(cd "$(dirname "$0")" && pwd)/strfry.conf"
+# La config dérivée par install.sh, celle que le service exécute — le
+# `deploy/strfry.conf` du dépôt est un gabarit depuis l'AUTH NIP-42.
+CONF="$DATA/strfry.conf"
 GARDE=14
 
 mkdir -p "$DEST"

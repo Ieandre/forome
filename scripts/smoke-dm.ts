@@ -4,14 +4,28 @@
  * Ce qu'il vérifie, et qui ne se voit pas dans un test unitaire :
  *
  *   1. la chaîne rumeur → sceau → emballage passe **la vraie policy** du relais
- *      (PoW 16 bits sur kind 1059, fenêtre `created_at` élargie pour NIP-59)
+ *      (PoW 14 bits sur kind 1059, fenêtre `created_at` élargie pour NIP-59)
  *   2. le destinataire déchiffre et retrouve **le bon auteur**
  *   3. l'expéditeur relit son propre message (la seconde copie)
- *   4. un tiers ne voit **rien** — ni le contenu, ni qui parle à qui
+ *   4. un tiers ne voit **rien** — ni le contenu, ni qui parle à qui, et pas
+ *      davantage en s'authentifiant
  *   5. le relais lui-même ne peut pas connaître l'expéditeur : la clé qui signe
  *      l'emballage est éphémère et n'est celle de personne
  *
- * Prérequis : npm run dev:relay
+ * ⚠️ **Chaque lecture s'authentifie en NIP-42**, et c'est le point que la
+ * première version ratait. strfry exige une AUTH pour lire les kinds de MP
+ * (`auth.restrictedReadKinds`, « 4, 1059 » par défaut) : sans elle il accepte
+ * les emballages puis ferme la souscription avec `auth-required`. Le test
+ * passait quand même, parce qu'on le lançait sur `dev-relay.ts` — qui n'a pas
+ * cette règle. **Lancer les deux**, sinon ce test ne prouve rien de la prod :
+ *
+ *   npx tsx scripts/smoke-dm.ts ws://localhost:7447   # relais Node
+ *   npx tsx scripts/smoke-dm.ts ws://localhost:7778   # strfry, celui de la prod
+ *
+ * Un pool par personne, et pas un pool partagé : l'AUTH vaut pour la connexion,
+ * donc alice et bob ne peuvent pas s'authentifier sur la même socket.
+ *
+ * Prérequis : npm run dev:relay (ou npm run dev:strfry)
  * Usage    : npx tsx scripts/smoke-dm.ts [ws://localhost:7447]
  */
 import { SimplePool, useWebSocketImplementation } from 'nostr-tools/pool'
@@ -20,7 +34,7 @@ import { createRumor, createSeal } from 'nostr-tools/nip59'
 import { unwrapEvent } from 'nostr-tools/nip17'
 import { encrypt as nip44Encrypt, getConversationKey } from 'nostr-tools/nip44'
 import { getPow } from 'nostr-tools/nip13'
-import type { Event, UnsignedEvent } from 'nostr-tools/core'
+import type { Event, EventTemplate, UnsignedEvent } from 'nostr-tools/core'
 import WebSocket from 'ws'
 
 useWebSocketImplementation(WebSocket)
@@ -69,15 +83,59 @@ function wrapWithPow(seal: Event, recipient: string, difficulty: number): Event 
   )
 }
 
-async function collect(recipientPk: string, ms = 2500): Promise<Event[]> {
+/**
+ * Signature du défi NIP-42. `nostr-tools` fabrique le gabarit (kind 22242, tags
+ * `relay` et `challenge`) et re-souscrit après l'AUTH : on ne fournit que ça.
+ */
+function authAs(sk: Uint8Array) {
+  return (evt: EventTemplate) => Promise.resolve(finalizeEvent(evt, sk))
+}
+
+/**
+ * Lit les emballages adressés à `recipientPk`, sur une connexion à soi.
+ *
+ * `sk` à null = lecture anonyme, pour montrer ce que le relais refuse. Le pool
+ * est local à l'appel parce que l'AUTH s'applique à la CONNEXION : sur un pool
+ * partagé, le second à s'authentifier se ferait répondre « already
+ * authenticated » et lirait avec l'identité du premier.
+ */
+async function collect(
+  sk: Uint8Array | null,
+  recipientPk: string,
+  filter: Record<string, unknown> = { kinds: [KIND_GIFT_WRAP], '#p': [recipientPk] },
+  ms = 2500,
+): Promise<Event[]> {
+  const own = new SimplePool()
   const got: Event[] = []
-  const sub = pool.subscribe(
-    [RELAY],
-    { kinds: [KIND_GIFT_WRAP], '#p': [recipientPk] },
-    { onevent: (ev) => got.push(ev) },
-  )
+  let sub: { close: () => void } | null = null
+  let retried = false
+
+  const start = (): void => {
+    sub = own.subscribe([RELAY], filter, {
+      onevent: (ev) => got.push(ev),
+      ...(sk ? { onauth: authAs(sk) } : {}),
+      onclose(closes) {
+        // ⚠️ La reprise est refaite ici, exactement comme dans le client, et
+        // pour la même raison : celle de `nostr-tools` exige « auth-required: »
+        // en tête de la raison, strfry envoie « ERROR: auth-required: … ». Un
+        // test qui s'appuierait sur la reprise intégrée passerait sur le relais
+        // Node et échouerait sur strfry — c'est le piège d'origine.
+        if (!sk || retried) return
+        if (!closes.some((c) => c.reason.includes('auth-required'))) return
+        retried = true
+        void own
+          .ensureRelay(RELAY)
+          .then((relay) => relay.auth(authAs(sk)))
+          .then(start)
+          .catch(() => {})
+      },
+    })
+  }
+
+  start()
   await new Promise((r) => setTimeout(r, ms))
-  sub.close()
+  sub?.close()
+  own.destroy()
   return got
 }
 
@@ -122,8 +180,8 @@ async function main(): Promise<void> {
     console.log(`     raison : ${String(why?.reason)}`)
   }
 
-  // Bob relit.
-  const bobWraps = await collect(bob.pk)
+  // Bob relit — authentifié, sinon strfry ferme la souscription.
+  const bobWraps = await collect(bob.sk, bob.pk)
   const bobMsgs = bobWraps
     .map((w) => {
       try {
@@ -137,8 +195,18 @@ async function main(): Promise<void> {
   check(!!received, 'bob déchiffre le message')
   check(received?.pubkey === alice.pk, 'bob retrouve le BON auteur', received ? received.pubkey.slice(0, 8) : '—')
 
+  // Sans AUTH, informatif et non bloquant : les deux relais de dev diffèrent
+  // légitimement là-dessus, et c'est justement la différence qui avait masqué
+  // le bug. 0 = le relais applique NIP-42 comme la prod.
+  const anon = await collect(null, bob.pk)
+  console.log(
+    `  · lecture anonyme : ${anon.length} emballage(s) — ${
+      anon.length === 0 ? 'le relais exige NIP-42 (comme la prod)' : 'ce relais n’exige pas NIP-42'
+    }`,
+  )
+
   // Alice relit sa propre copie — sinon elle ne voit pas son historique.
-  const aliceWraps = await collect(alice.pk)
+  const aliceWraps = await collect(alice.sk, alice.pk)
   const aliceMsgs = aliceWraps
     .map((w) => {
       try {
@@ -155,17 +223,14 @@ async function main(): Promise<void> {
 
   // Carol ne doit rien recevoir : le filtre `#p` ne la cible pas, et même en
   // récupérant les emballages elle ne peut pas les déchiffrer.
-  const carolWraps = await collect(carol.pk, 1500)
+  const carolWraps = await collect(carol.sk, carol.pk, undefined, 1500)
   check(carolWraps.length === 0, 'carol ne reçoit aucun emballage', `${carolWraps.length} reçu(s)`)
 
-  const allWraps = await new Promise<Event[]>((resolve) => {
-    const got: Event[] = []
-    const sub = pool.subscribe([RELAY], { kinds: [KIND_GIFT_WRAP] }, { onevent: (ev) => got.push(ev) })
-    setTimeout(() => {
-      sub.close()
-      resolve(got)
-    }, 1500)
-  })
+  // Authentifiée EN TANT QUE CAROL, et sans `#p` : le cas le plus favorable
+  // pour elle. Un relais qui applique `restrictReadToInvolvedPubkey` ne rend
+  // rien ; un relais qui ne l'applique pas rend tout, et le chiffrement doit
+  // alors suffire — c'est ce que vérifie la ligne suivante.
+  const allWraps = await collect(carol.sk, carol.pk, { kinds: [KIND_GIFT_WRAP] }, 1500)
   const carolCracked = allWraps.filter((w) => {
     try {
       unwrapEvent(w, carol.sk)

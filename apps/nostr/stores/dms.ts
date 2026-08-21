@@ -303,8 +303,25 @@ export const useDmStore = defineStore('dms', () => {
     if (!me || subs.length > 0 || !available.value) return
     // Les emballages nous sont adressés par un tag `p` ; l'auteur de l'event est
     // une clé éphémère, donc filtrer par `authors` serait vide de sens.
+    //
+    // `authenticate` : **la seule souscription du projet qui s'authentifie.**
+    // strfry exige une AUTH NIP-42 pour lire les kinds de MP
+    // (`auth.restrictedReadKinds`, « 4, 1059 » par défaut) — sinon n'importe qui
+    // moissonnerait les emballages de n'importe qui et saurait qui reçoit des MP
+    // et quand, ce que le gift wrap est justement censé cacher. Sans ça, le
+    // relais accepte nos emballages puis ferme la souscription avec
+    // `auth-required` : les MP partent et ne reviennent jamais.
+    //
+    // Ça ne concède rien : le filtre porte déjà notre clé en `#p`. Ailleurs,
+    // s'authentifier lierait une simple lecture à une identité — voir
+    // `authSigner` dans `stores/relays.ts`.
     subs.push(
-      relayStore.subscribe({ kinds: [KIND_GIFT_WRAP], '#p': [me] }, { onevent: ingestWrap }, 'dm'),
+      relayStore.subscribe(
+        { kinds: [KIND_GIFT_WRAP], '#p': [me] },
+        { onevent: ingestWrap },
+        'dm',
+        { authenticate: true },
+      ),
     )
   }
 

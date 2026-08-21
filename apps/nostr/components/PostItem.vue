@@ -556,7 +556,14 @@ const quotedName = computed(() =>
   props.quoted?.pubkey ? profiles.displayName(props.quoted.pubkey) : 'auteur inconnu',
 )
 
-const quotedText = computed(() => (props.quoted?.content ? quotePreview(props.quoted.content) : ''))
+const quotedText = computed(() =>
+  props.quoted?.content
+    ? // Les pseudos de l'amorce viennent des profils, comme ceux du fil : sans
+      // ça, la même personne s'appellerait `khey_…` dans la citation et « Théo »
+      // trois lignes plus bas.
+      quotePreview(props.quoted.content, 220, (pubkey) => profiles.displayName(pubkey))
+    : '',
+)
 
 /**
  * Trois états, trois phrases : on peut sauter, le parent est chargé mais hors du

@@ -22,6 +22,8 @@ function flatten(tokens: InlineToken[]): string {
           return t.label
         case 'image':
           return t.alt
+        case 'mention':
+          return t.pubkey
         default:
           return flatten(t.children)
       }
@@ -193,6 +195,46 @@ describe('blocs', () => {
   })
 })
 
+describe('mentions (NIP-27)', () => {
+  const A = 'a'.repeat(63) + '1'
+  const NPUB_A = 'npub142424242424242424242424242424242424242424242424242ssjg3fxl'
+  const NPROFILE_A =
+    'nprofile1qyg8wumn8ghj7etcv4khqmr99en8yqpq42424242424242424242424242424242424242424242424242ssztpx7z'
+
+  it('nostr:npub devient une mention portant la clé', () => {
+    const tokens = parseInline(`salut nostr:${NPUB_A} !`)
+    expect(tokens.map((t) => t.type)).toEqual(['text', 'mention', 'text'])
+    expect(tokens[1]).toEqual({ type: 'mention', pubkey: A })
+  })
+
+  it('nostr:nprofile aussi, en ne gardant que la clé', () => {
+    expect(parseInline(`nostr:${NPROFILE_A}`)[0]).toEqual({ type: 'mention', pubkey: A })
+  })
+
+  it('une npub abîmée reste du texte, affichée telle quelle', () => {
+    const bad = `nostr:${NPUB_A.slice(0, -1)}q`
+    const tokens = parseInline(bad)
+    expect(tokens.every((t) => t.type === 'text')).toBe(true)
+    expect(flatten(tokens)).toBe(bad)
+  })
+
+  /** Le texte autour doit survivre intact : c'est ce qui casse en premier. */
+  it('n’avale pas la ponctuation ni le mot suivant', () => {
+    expect(flatten(parseInline(`ok nostr:${NPUB_A}, vraiment`))).toBe(`ok ${A}, vraiment`)
+  })
+
+  it('cohabite avec une URL nue dans la même ligne', () => {
+    const tokens = parseInline(`nostr:${NPUB_A} vu sur https://exemple.fr`)
+    expect(tokens.map((t) => t.type)).toEqual(['mention', 'text', 'link'])
+  })
+
+  it('un nostr: qui ne désigne pas une clé reste du texte', () => {
+    // `nevent`, `note`, `naddr` : ce sont des adresses d'events, pas des gens.
+    const tokens = parseInline('nostr:note1qqqqq')
+    expect(tokens.every((t) => t.type === 'text')).toBe(true)
+  })
+})
+
 describe('hasMarkup', () => {
   it('faux sur du texte nu — le cas courant, qui doit rester bon marché', () => {
     expect(hasMarkup('juste une phrase normale')).toBe(false)
@@ -212,6 +254,13 @@ describe('hasMarkup', () => {
   it('vrai sur une URL nue, qui devient un lien', () => {
     expect(hasMarkup('this looks fun\nhttps://media.exemple.io/a.png')).toBe(true)
     expect(hasMarkup('http://a.fr')).toBe(true)
+  })
+
+  /** Même raison : un message qui n'est qu'une mention doit être rendu enrichi. */
+  it('vrai sur une mention nue', () => {
+    expect(hasMarkup('nostr:npub142424242424242424242424242424242424242424242424242ssjg3fxl')).toBe(
+      true,
+    )
   })
 })
 

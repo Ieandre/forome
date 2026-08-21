@@ -2,6 +2,8 @@
  * Formateurs. **Toutes les durées sont en secondes** (unité Nostr) — voir
  * l'avertissement dans `types/nostr.ts`.
  */
+import { mentionUriRegex, decodeMentionUri } from '~/utils/richtext'
+import { kheyHandle } from '~/utils/nostr'
 
 /**
  * Formateurs ICU construits une fois. `toLocale*String` avec options en crée un
@@ -97,11 +99,29 @@ export function shortId(id: string, n = 8): string {
  * Même raison pour les blocs de code, qu'on ne veut pas voir s'aplatir sur une
  * ligne.
  */
-export function quotePreview(text: string, max = 220): string {
+export function quotePreview(
+  text: string,
+  max = 220,
+  nameOf: (pubkey: string) => string = kheyHandle,
+): string {
   const flat = text
     .replace(/```[\s\S]*?```/g, ' [code] ')
     .replace(/\|\|[\s\S]*?\|\|/g, ' [spoil] ')
     .replace(/`([^`]*)`/g, '$1')
+    /*
+     * Une mention redevient un pseudo. Laisser passer l'URI mettrait 63
+     * caractères de bech32 dans une amorce de deux lignes — et un identifiant
+     * technique à la place de ce qu'il désigne est précisément ce qu'on refuse
+     * ailleurs (voir la citation montrée en tête de réponse).
+     *
+     * `nameOf` par défaut ne dépend de rien : le handle `khey_` se déduit de la
+     * clé. L'appelant qui a les profils sous la main passe le vrai pseudo, pour
+     * que l'amorce nomme les gens comme le fil au-dessus.
+     */
+    .replace(mentionUriRegex(), (whole, bech: string) => {
+      const pubkey = decodeMentionUri(bech)
+      return pubkey ? `@${nameOf(pubkey)}` : whole
+    })
     // Un lien ne garde que son libellé : l'URL est du bruit dans une amorce.
     .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
     // Une image est nommée, pas transcrite : son adresse fait 80 caractères sans

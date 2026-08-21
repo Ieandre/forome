@@ -16,7 +16,7 @@
  * c'est un marqueur (`"root"`, `"reply"`, `"mention"`). D'où le test
  * hexadécimal partout plutôt qu'une confiance dans la position.
  */
-import type { NostrEvent } from '~/types/nostr'
+import { KIND_THREAD, type NostrEvent } from '~/types/nostr'
 import { tagValue } from '~/utils/nostr'
 
 const HEX64 = /^[0-9a-f]{64}$/
@@ -52,6 +52,14 @@ export function parentRef(ev: NostrEvent): { id: string; author: string | null }
  * simple mention est un mensonge.
  */
 export function notifKindOf(ev: NostrEvent, me: string): 'reply' | 'mention' {
+  /*
+   * Un kind 11 EST la racine : il n'a pas de parent, donc y être tagué ne peut
+   * être qu'une mention. Sans ce test, le repli sur le premier tag `p` annonce
+   * « t'a répondu » sur un topic qu'on vient d'ouvrir en te citant — le mensonge
+   * que le reste de cette fonction s'applique à éviter.
+   */
+  if (ev.kind === KIND_THREAD) return 'mention'
+
   const parent = parentRef(ev)
   if (parent?.author) return parent.author === me ? 'reply' : 'mention'
 

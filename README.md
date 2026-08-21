@@ -36,7 +36,7 @@ Ces trois-là, plus `smoke:policy`, tournent sur chaque pull request ; un push s
 
 | | |
 |---|---|
-| [`apps/nostr`](apps/nostr) | **le client** (Nuxt, SPA). Lit les relais, publie avec PoW, consomme le tick de l'indexeur, suit/bloque (kind 3, kind 10000), MP chiffrés NIP-17, signature par signeur distant révocable (NIP-46) |
+| [`apps/nostr`](apps/nostr) | **le client** (Nuxt, SPA). Lit les relais, publie avec PoW, consomme le tick de l'indexeur, suit/bloque (kind 3, kind 10000), mentionne (`nostr:npub…` NIP-27 + tag `p`), MP chiffrés NIP-17, signature par signeur distant révocable (NIP-46) |
 | [`apps/indexer`](apps/indexer) | **le tick signé** : vélocité, détection de raid, publié comme event Nostr (kind 30078) |
 | [`packages/relay-policy`](packages/relay-policy) | **la policy d'écriture**, partagée par le plugin strfry, le relais de dev et l'indexeur. La seule barrière du système, donc la plus testée du dépôt (policy, modération, révisions) |
 | [`scripts/`](scripts) | relais de dev, seed, bunker NIP-46, mise en place de la modération, smokes bout en bout |
@@ -116,8 +116,12 @@ workers/pow.worker.ts minage NIP-13, deux modes : horodatage libre ou figé
 composables/          usePowMiner (singleton, minage spéculatif), usePublisher
 components/           TopicList (gel + pilule +N), PostFeed (accrochage, tampon,
                       ambiance, cap DOM), PostItem (codes forum, nº local),
-                      Composer (encart + nudge), PostEditor (correction d'un
-                      message publié), DevicePairing (QR + bunker)
+                      Composer (encart + nudge), RichEditor (frappe stylisée,
+                      complétion `@…`), PostEditor (correction d'un message
+                      publié), DevicePairing (QR + bunker)
+utils/mentions.ts     mentions : `nostr:npub…` dans le texte, tag `p` dérivé de
+                      l'arbre analysé — donc jamais de notification sans mention
+                      visible en face
 pages/                / , /t/[id] (vue 30/70) et /new — trois routes, un seul
                       écran ; /dm, /profil, /appareils, /admin, /moderation,
                       /comment-ca-marche (la doc du mécanisme : clés, event

@@ -90,6 +90,8 @@
         class="composer__input"
         label="Ta réponse"
         placeholder="ta réponse"
+        :mentions="mentions"
+        @update:mention-query="mentionQuery = $event"
         @update:model-value="onEditorInput"
         @files="attachImages"
         @image-resize="onImageResize"
@@ -185,6 +187,8 @@ const props = defineProps<{
   rootId: string
   root: NostrEvent | null
   replyTo?: NostrEvent | null
+  /** Les gens du fil ouvert, proposés en premier à la frappe `@…`. */
+  participants?: string[]
 }>()
 const emit = defineEmits<{ posted: [event: NostrEvent, replacedId?: string]; settled: [id: string, accepted: boolean]; cancelReply: [] }>()
 
@@ -196,6 +200,10 @@ const devTools = useDevTools()
 const images = useImageUpload()
 
 const draft = ref('')
+
+/** Frappe `@…` en cours dans l'éditeur, et les candidats qu'elle désigne. */
+const mentionQuery = ref<string | null>(null)
+const mentions = useMentionSuggestions(mentionQuery, () => props.participants ?? [])
 const editorEl = ref<{
   toggleInline: (k: MarkupKind) => void
   toggleBlock: (k: BlockKind) => void

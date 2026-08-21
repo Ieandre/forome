@@ -356,7 +356,7 @@ compteur qu'on regarde sans agir dessus n'a rien à faire ici.
 - **badge `modération` / `admin`** sur les messages du staff. Une autorité
   invisible n'existe pas ; et sans badge, un modérateur qui intervient dans un
   fil est indistinguable d'un khey qui se donne de l'importance
-- **action « signaler »** dans la rangée d'actions, à côté de « citer » — code
+- **action « signaler »** dans la rangée d'actions, à côté de « répondre » — code
   forum, jamais au survol (§7.3)
 - **messages repliés** avec motif, auteur de la décision, et bouton « afficher »
 - **topic verrouillé** : bandeau, composeur fermé, motif visible

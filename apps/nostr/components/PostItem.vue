@@ -249,20 +249,24 @@
         <p v-if="!compact && signature && !retracted" class="msg__sig">{{ signature }}</p>
         </template>
 
-        <!-- « Citer » permanent, jamais au survol : code de forum (§7.3). -->
+        <!-- « répondre » permanent, jamais au survol : code de forum (§7.3). -->
         <div v-if="!compact" class="msg__actions">
           <span v-if="flash" class="msg__flash">{{ flash }}</span>
 
           <Hint
             v-if="!veiled"
-            :text="unsent ? 'ce message n’a pas encore d’identifiant — une seconde' : 'citer ce message dans ta réponse'"
+            :text="
+              unsent
+                ? 'ce message n’a pas encore d’identifiant — une seconde'
+                : 'répondre à ce message — ta réponse le montrera au-dessus d’elle'
+            "
           >
             <button type="button" class="msg__act" :disabled="unsent" @click="emit('reply', post.id)">
-              Citer
+              répondre
             </button>
           </Hint>
 
-          <!-- « Modifier » vit dans la rangée permanente avec « Citer », jamais
+          <!-- « modifier » vit dans la rangée permanente avec « répondre », jamais
                au survol : c'est la convention du forum, et une action qu'on ne
                découvre qu'en passant la souris n'existe pas au doigt.
 
@@ -286,11 +290,11 @@
               :disabled="locked || unsent"
               @click="toggleEdit"
             >
-              Modifier
+              modifier
             </button>
           </Hint>
 
-          <!-- Signaler vit avec « Citer » : c'est la rangée d'actions des
+          <!-- « signaler » vit avec « répondre » : c'est la rangée d'actions des
                forums, alignée sous le message, pas un menu caché. -->
           <Hint v-if="!own && !veiled" text="signaler ce message à la modération">
             <button
@@ -299,7 +303,7 @@
               :class="{ 'msg__act--on': panel === 'report' }"
               @click="panel = panel === 'report' ? null : 'report'"
             >
-              Signaler
+              signaler
             </button>
           </Hint>
 
@@ -310,7 +314,7 @@
               :class="{ 'msg__act--on': panel === 'moderate' }"
               @click="panel = panel === 'moderate' ? null : 'moderate'"
             >
-              Modérer
+              modérer
             </button>
           </Hint>
         </div>
@@ -454,7 +458,7 @@ const panel = ref<'report' | 'moderate' | 'history' | null>(null)
  * Rangée affichée avant que son event existe : le fil montre le message dès le
  * clic sur « Poster », donc pendant un instant il n'a pas encore d'id.
  *
- * Citer et corriger sont désactivés le temps que ça dure. Les deux écriraient un
+ * Répondre et corriger sont désactivés le temps que ça dure. Les deux écriraient un
  * tag pointant l'id provisoire — un lien vers un event qui n'existera jamais,
  * publié sur un réseau qui ne sait pas effacer. Désactivés et non masqués : la
  * rangée d'actions ne doit pas se réorganiser sous le doigt une demi-seconde
@@ -719,7 +723,7 @@ function copyPermalink(): void {
 /*
  * Le fil est une suite de posts numérotés dans un registre, pas une
  * conversation en bulles : chaque message reste une rangée distincte, jamais
- * fusionnée avec la suivante, avec son nº et son bouton « Citer » permanents.
+ * fusionnée avec la suivante, avec son nº et son bouton « répondre » permanents.
  *
  * Ce qui change, c'est l'anatomie : la barre d'auteur grise à filet, la colonne
  * d'avatar de 42 px et les quatre bordures ont disparu. Le message est une
@@ -884,7 +888,7 @@ function copyPermalink(): void {
  * lecteur (du texte de quelqu'un d'autre), donc elles se ressemblent.
  *
  * C'est un bouton, mais il ne ressemble pas à un bouton : bordure gauche seule,
- * pas de cadre. La rangée « Citer | suivre » plus bas a écarté les cadres pour
+ * pas de cadre. La rangée « répondre | signaler » plus bas a écarté les cadres pour
  * la même raison — répétés sur un fil long, ils écrasent le contenu.
  */
 .msg__quote {
@@ -1168,7 +1172,7 @@ function copyPermalink(): void {
 }
 /* L'action de modération se distingue sans crier : elle n'apparaît que pour le
    staff, donc elle n'a pas à se battre pour l'attention — elle doit juste ne pas
-   se confondre avec « Citer » au moment de viser. */
+   se confondre avec « répondre » au moment de viser. */
 .msg__act--staff {
   color: var(--link);
 }
@@ -1380,8 +1384,8 @@ function copyPermalink(): void {
   }
 }
 
-/* Au doigt : « Citer », « Signaler » et « suivre » sont côte à côte à 2 px
-   d'écart et hauts de 21 px — on en visait un et on en touchait un autre.
+/* Au doigt : « répondre », « signaler » et leurs voisines sont côte à côte à
+   2 px d'écart et hautes de 21 px — on en visait une et on en touchait une autre.
    La hauteur de la puce et l'écart augmentent ; le texte, lui, ne bouge pas,
    donc le mur de bruit que ces actions devaient éviter ne revient pas. */
 @media (pointer: coarse) {

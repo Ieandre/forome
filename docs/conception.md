@@ -539,8 +539,8 @@ pas la bulle de conversation :
 
 - chaque message est une rangée à part entière, **jamais fusionnée** avec la
   suivante du même auteur
-- barre d'auteur, numéro de post visible, bouton « Citer » **permanent** (pas au
-  survol)
+- barre d'auteur, numéro de post visible, bouton « répondre » **permanent** (pas
+  au survol)
 - rangées bordées ou zébrées, provenance en mono (pseudo, heure, numéro, id
   court)
 - pas de regroupement de messages consécutifs, pas de barres d'outils au survol,

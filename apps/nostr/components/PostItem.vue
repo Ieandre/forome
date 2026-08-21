@@ -872,8 +872,14 @@ async function copyPermalink(): Promise<void> {
   grid-area: body;
   min-width: 0;
 }
+/* Le corps d'un message est le seul texte de l'écran qu'on LIT, par opposition à
+   tout ce qu'on balaye : il a droit à un cran de plus que le châssis, et au même
+   corps que ce qu'on tape dans le composeur — on lisait à 14/1,5 ce qu'on
+   écrivait à 15/1,6, ce qui est l'inverse de l'ordre des priorités. */
 .msg__content {
   min-width: 0;
+  font-size: var(--fs-lg);
+  line-height: 1.62;
 }
 
 /* ------------------------------------------------------------- citation --- */

@@ -5,20 +5,22 @@
          différentes. L'en-tête porte aussi le seul retour disponible en mobile,
          où la liste est masquée. -->
     <header class="nt__head">
-      <Hint text="retour à la liste" placement="bottom">
-        <button type="button" class="nt__back" @click="leave">
-          <span aria-hidden="true">←</span>
-          <span class="visually-hidden">retour à la liste</span>
-        </button>
-      </Hint>
+      <div class="nt__col nt__head-col">
+        <Hint text="retour à la liste" placement="bottom">
+          <button type="button" class="nt__back" @click="leave">
+            <span aria-hidden="true">←</span>
+            <span class="visually-hidden">retour à la liste</span>
+          </button>
+        </Hint>
 
-      <UserAvatar v-if="identity.pubkey" :pubkey="identity.pubkey" :size="26" class="nt__av" />
+        <UserAvatar v-if="identity.pubkey" :pubkey="identity.pubkey" :size="26" class="nt__av" />
 
-      <div class="nt__ident">
-        <h1 class="nt__kicker">Nouveau topic</h1>
-        <p class="nt__by">
-          par <strong>{{ identity.displayName }}</strong>
-        </p>
+        <div class="nt__ident">
+          <h1 class="nt__kicker">Nouveau topic</h1>
+          <p class="nt__by">
+            par <strong>{{ identity.displayName }}</strong>
+          </p>
+        </div>
       </div>
     </header>
 
@@ -279,13 +281,19 @@ async function submit(): Promise<void> {
 }
 
 /* ----------------------------------------------------------------- en-tête */
+/* Le bandeau garde son filet sur toute la largeur, son contenu descend dans
+   `.nt__col` : sans ça la tête commençait au bord du panneau et le formulaire
+   au bord de la colonne — deux départs pour un même écran, d'autant plus
+   visibles depuis que la colonne s'est resserrée. */
 .nt__head {
+  flex-shrink: 0;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+.nt__head-col {
   display: flex;
   align-items: center;
   gap: 14px;
-  flex-shrink: 0;
-  padding: 14px 20px;
-  border-bottom: 1px solid var(--line-soft);
 }
 .nt__back {
   display: none;

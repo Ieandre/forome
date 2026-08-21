@@ -9,40 +9,42 @@
 
       <template v-else-if="openTopicId">
         <header class="topic-head">
-          <Hint text="retour à la liste" placement="bottom">
-            <button type="button" class="topic-head__back" @click="closeTopic">
-              <span aria-hidden="true">←</span>
-              <span class="visually-hidden">retour à la liste</span>
-            </button>
-          </Hint>
+          <div class="topic-head__col">
+            <Hint text="retour à la liste" placement="bottom">
+              <button type="button" class="topic-head__back" @click="closeTopic">
+                <span aria-hidden="true">←</span>
+                <span class="visually-hidden">retour à la liste</span>
+              </button>
+            </Hint>
 
-          <UserAvatar v-if="rootAuthor" :pubkey="rootAuthor" :size="26" class="topic-head__av" />
+            <UserAvatar v-if="rootAuthor" :pubkey="rootAuthor" :size="26" class="topic-head__av" />
 
-          <div class="topic-head__main">
-            <h1 class="topic-head__title">{{ title }}</h1>
-            <div class="topic-head__meta">
-              <span v-if="rootAuthor" class="topic-head__by">
-                par <strong>{{ profiles.displayName(rootAuthor) }}</strong>
-              </span>
-              <span v-if="row" class="topic-head__stat mono">{{ row.replies }} msg</span>
-              <span v-if="row && row.people > 0" class="topic-head__stat mono">{{ row.people }} kheys</span>
-              <span v-if="row && row.vel > 6" class="tag tag--brand topic-head__hot">ça parle maintenant</span>
+            <div class="topic-head__main">
+              <h1 class="topic-head__title">{{ title }}</h1>
+              <div class="topic-head__meta">
+                <span v-if="rootAuthor" class="topic-head__by">
+                  par <strong>{{ profiles.displayName(rootAuthor) }}</strong>
+                </span>
+                <span v-if="row" class="topic-head__stat mono">{{ row.replies }} msg</span>
+                <span v-if="row && row.people > 0" class="topic-head__stat mono">{{ row.people }} kheys</span>
+                <span v-if="row && row.vel > 6" class="tag tag--brand topic-head__hot">ça parle maintenant</span>
+              </div>
             </div>
+
+            <button
+              v-if="mod.amStaff"
+              type="button"
+              class="btn btn--sm topic-head__mod"
+              :class="{ 'topic-head__mod--on': modPanel }"
+              @click="modPanel = !modPanel"
+            >
+              modérer
+            </button>
+
+            <button type="button" class="btn btn--sm topic-head__perma" @click="copyPermalink">
+              {{ copied ? 'copié' : 'permalien' }}
+            </button>
           </div>
-
-          <button
-            v-if="mod.amStaff"
-            type="button"
-            class="btn btn--sm topic-head__mod"
-            :class="{ 'topic-head__mod--on': modPanel }"
-            @click="modPanel = !modPanel"
-          >
-            modérer
-          </button>
-
-          <button type="button" class="btn btn--sm topic-head__perma" @click="copyPermalink">
-            {{ copied ? 'copié' : 'permalien' }}
-          </button>
         </header>
 
         <TopicModeration v-if="modPanel && openTopicId" :topic-id="openTopicId" @close="modPanel = false" />
@@ -260,8 +262,18 @@ async function copyPermalink(): Promise<void> {
   border-radius: var(--r-panel);
   box-shadow: var(--elev-2);
   overflow: hidden;
-  /* mesure de lecture partagée par l'en-tête, le fil et le pied */
-  --topic-col: 880px;
+  /*
+   * Mesure de lecture, partagée par l'en-tête, le fil et le pied.
+   *
+   * 880 px donnaient 111 caractères par ligne (mesuré dans Instrument Sans, pas
+   * estimé) là où l'œil retrouve le début de la ligne suivante jusqu'à ~75. Au
+   * delà il la rate, et il la rate à CHAQUE retour : c'était le premier défaut
+   * de lisibilité du fil, avant toute question de hauteur. 700 px avec le corps
+   * à 15 px donnent 80 caractères — au-dessus de l'idéal, mais un forum se lit
+   * plus dense qu'un livre, et resserrer davantage ferait une bande étroite au
+   * milieu d'un panneau de 970.
+   */
+  --topic-col: 700px;
 }
 
 /* ------------------------------------------------------------ tête de topic
@@ -270,13 +282,22 @@ async function copyPermalink(): Promise<void> {
    plus besoin de bordure basse — le fil défile en dessous sur un fond
    légèrement enfoncé, et le décrochement de surface suffit. */
 .topic-head {
-  display: flex;
-  align-items: center;
-  gap: 14px;
   flex-shrink: 0;
   padding: 14px 20px;
   background: var(--surface);
   border-bottom: 1px solid var(--line-soft);
+}
+/* Le bandeau reste pleine largeur — c'est lui qui porte le filet et le
+   décrochement de surface — mais son CONTENU tient dans la colonne de lecture.
+   Sans ça le titre commençait 16 px à gauche du bord des messages et 26 px à
+   gauche du composeur : trois bords à quelques pixels d'écart, assez proches
+   pour se lire comme un défaut plutôt que comme trois alignements. */
+.topic-head__col {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  max-width: var(--topic-col, 880px);
+  margin: 0 auto;
 }
 .topic-head__back {
   display: none;
@@ -299,6 +320,9 @@ async function copyPermalink(): Promise<void> {
   min-width: 0;
   flex: 1;
 }
+/* Deux lignes plutôt qu'une troncature : le titre est ce qu'on est venu lire, et
+   la colonne s'est resserrée à la mesure de lecture — l'ellipse y mangerait des
+   titres entiers. La tête ne grandit que quand elle en a besoin. */
 .topic-head__title {
   margin: 0;
   font-family: var(--font-display);
@@ -307,9 +331,10 @@ async function copyPermalink(): Promise<void> {
   letter-spacing: -0.03em;
   line-height: 1.2;
   color: var(--ink);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .topic-head__hot {
   animation: hot-breathe 2.6s ease-in-out infinite;

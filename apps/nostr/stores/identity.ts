@@ -27,6 +27,7 @@ import { kheyHandle, keyDiscriminator, decodeSecretInput } from '~/utils/nostr'
 const SK_KEY = 'forome.sk'
 const POSTS_KEY = 'forome.posts'
 const SAVED_KEY = 'forome.keySaved'
+const ENCART_KEY = 'forome.encartSeen'
 const SIGNER_KEY = 'forome.signer'
 /** clé locale servant à parler au bunker — n'est PAS l'identité */
 const BUNKER_CLIENT_SK = 'forome.bunker.clientSk'
@@ -70,7 +71,11 @@ export const useIdentityStore = defineStore('identity', () => {
   const signerError = ref<string | null>(null)
   /** hors du state réactif : objet à connexion vive, pas une donnée */
   let bunker: BunkerSigner | null = null
-  /** true le temps d'un tour : l'encart du premier post n'a pas encore été vu */
+  /**
+   * L'encart du premier post a déjà eu sa réponse. Persisté : il pose une
+   * question qu'on ne repose pas. En mémoire seule, chaque rechargement de page
+   * la reposait à quelqu'un qui avait déjà choisi son pseudo.
+   */
   const encartSeen = ref(false)
 
   const nip07 = computed<Nip07 | null>(() =>
@@ -145,6 +150,7 @@ export const useIdentityStore = defineStore('identity', () => {
 
     postCount.value = Number(localStorage.getItem(POSTS_KEY) ?? 0) || 0
     keySaved.value = localStorage.getItem(SAVED_KEY) === '1'
+    encartSeen.value = localStorage.getItem(ENCART_KEY) === '1'
     const storedMode = localStorage.getItem(SIGNER_KEY)
 
     if (storedMode === 'nip07') {
@@ -186,8 +192,10 @@ export const useIdentityStore = defineStore('identity', () => {
       // clé neuve = rien à perdre : ni encart, ni nudge, ni compteur
       postCount.value = 0
       keySaved.value = false
+      encartSeen.value = false
       localStorage.setItem(POSTS_KEY, '0')
       localStorage.removeItem(SAVED_KEY)
+      localStorage.removeItem(ENCART_KEY)
     }
     pubkey.value = getPublicKey(secretKey.value)
     signerMode.value = 'local'
@@ -285,7 +293,7 @@ export const useIdentityStore = defineStore('identity', () => {
       // Une identité pilotée par bunker n'a rien à sauvegarder ici : la clé
       // n'est pas sur cet appareil.
       keySaved.value = true
-      encartSeen.value = true
+      markEncartSeen()
       return { ok: true, pubkey: remotePubkey }
     } catch (err) {
       bunkerError.value = err instanceof Error ? err.message : String(err)
@@ -335,6 +343,7 @@ export const useIdentityStore = defineStore('identity', () => {
     localStorage.removeItem(BUNKER_CLIENT_SK)
     localStorage.setItem(POSTS_KEY, '0')
     localStorage.removeItem(SAVED_KEY)
+    localStorage.removeItem(ENCART_KEY)
     secretKey.value = null
     pubkey.value = null
     signerMode.value = 'local'
@@ -375,6 +384,7 @@ export const useIdentityStore = defineStore('identity', () => {
 
   function markEncartSeen(): void {
     encartSeen.value = true
+    if (import.meta.client) localStorage.setItem(ENCART_KEY, '1')
   }
 
   function markKeySaved(): void {
@@ -436,7 +446,7 @@ export const useIdentityStore = defineStore('identity', () => {
       localStorage.setItem(SAVED_KEY, '1')
     }
     keySaved.value = true
-    encartSeen.value = true
+    markEncartSeen()
     return { ok: true, pubkey: res.pubkey }
   }
 

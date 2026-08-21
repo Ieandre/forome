@@ -158,6 +158,13 @@ ssh <vm> 'journalctl -u forome-web -u forome-strfry -u forome-indexer -n 50 --no
 
 ## Première mise en service
 
+`update.sh` tourne en **deux passes**, et ce n'est pas un détail : la première
+synchronise le dépôt puis se `exec` elle-même, la seconde fait le travail. Sans
+ça, le script se remplace en cours d'exécution — git écrit le nouveau fichier à
+côté puis le renomme, donc bash garde l'ancien inode et le déroule jusqu'au
+bout. Toute modification de la procédure de déploiement ne prenait effet qu'au
+déploiement **suivant**, en silence.
+
 Le pipeline **redéploie**, il n'installe pas. Une VM neuve passe d'abord par le
 kit, dans cet ordre :
 

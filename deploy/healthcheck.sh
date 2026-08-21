@@ -80,6 +80,18 @@ if [ "$fail" -eq 0 ]; then
   echo "Santé OK — $(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo 'commit inconnu,') en place et répond."
 else
   echo "Santé DÉGRADÉE — voir les lignes ÉCHEC ci-dessus."
-  echo "Diagnostic : journalctl -u forome-web -u forome-strfry -u forome-indexer -n 50 --no-pager"
+  echo
+  # Le journal est IMPRIMÉ, pas seulement recommandé.
+  #
+  # Ce script tourne surtout depuis la CI, où personne ne lira une commande à
+  # lancer à la main : il faut ouvrir une session sur la VM pour savoir ce qui
+  # s'est passé, donc on repart pour un aller-retour à chaque échec. Deux
+  # déploiements ont été rejetés sans qu'on sache ce que strfry refusait — la
+  # réponse était là, à trente lignes de distance.
+  #
+  # `|| true` : un journal illisible (droits, journald absent) ne doit pas
+  # masquer le vrai motif d'échec, qui est déjà imprimé au-dessus.
+  echo "── journal des services, 30 dernières lignes ──"
+  journalctl -u forome-web -u forome-strfry -u forome-indexer -n 30 --no-pager 2>&1 || true
 fi
 exit "$fail"

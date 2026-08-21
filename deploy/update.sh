@@ -12,17 +12,36 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DATA="$HOME/forome-data"
 
 cd "$ROOT"
-if [ -n "$REF" ]; then
-  # Déploiement piloté (CI, retour arrière) : on veut ce commit-là et pas un
-  # autre, y compris en arrière — donc reset dur, quitte à écraser une retouche
-  # faite à la main sur la VM. Rien de vivant ne vit dans le dépôt.
-  git fetch --prune origin
-  git checkout -f main
-  git reset --hard "$REF"
-else
-  # À la main : --ff-only refuse plutôt que d'écraser un travail local.
-  git pull --ff-only
+
+# ── Passe 1 : synchroniser le dépôt, puis se passer la main à soi-même ────────
+#
+# ⚠️ Ce script se remplace LUI-MÊME en synchronisant le dépôt, et bash ne le
+# relit pas : git écrit le nouveau fichier à côté puis le renomme, donc l'inode
+# ouvert par bash reste l'ANCIEN et s'exécute jusqu'au bout. Toute modification
+# de ce fichier ne prenait donc effet qu'au déploiement SUIVANT — sans un mot,
+# et en faisant croire au précédent qu'il l'avait appliquée. C'est exactement ce
+# qui s'est passé quand la dérivation de la config du relais est arrivée ici :
+# le déploiement a installé l'unité systemd qui la réclame sans jamais l'écrire.
+#
+# D'où ce `exec` : la passe 1 ne fait que le git, la passe 2 fait le travail —
+# et c'est la version qu'on vient de déployer qui la fait.
+if [ -z "${FOROME_UPDATE_PASSE2:-}" ]; then
+  if [ -n "$REF" ]; then
+    # Déploiement piloté (CI, retour arrière) : on veut ce commit-là et pas un
+    # autre, y compris en arrière — donc reset dur, quitte à écraser une retouche
+    # faite à la main sur la VM. Rien de vivant ne vit dans le dépôt.
+    git fetch --prune origin
+    git checkout -f main
+    git reset --hard "$REF"
+  else
+    # À la main : --ff-only refuse plutôt que d'écraser un travail local.
+    git pull --ff-only
+  fi
+  export FOROME_UPDATE_PASSE2=1
+  exec bash "$ROOT/deploy/update.sh" "$@"
 fi
+
+# ── Passe 2 : le dépôt est à jour, et ceci est son update.sh ─────────────────
 npm ci
 
 set -a; source "$DATA/web.env"; set +a

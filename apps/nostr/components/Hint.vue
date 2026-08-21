@@ -65,9 +65,20 @@ function clear(): void {
   if (timer) clearTimeout(timer)
   timer = null
 }
+/**
+ * Le survol n'ouvre la bulle que là où le survol EXISTE.
+ *
+ * Même piège que `onFocusIn` juste en dessous, par l'autre porte : au doigt,
+ * Safari synthétise `mouseenter` au tap, et rien n'envoie le `mouseleave` tant
+ * qu'on n'a pas touché ailleurs. Toucher l'avatar posait donc une bulle noire
+ * qui nommait le bouton, par-dessus le menu que le même tap venait d'ouvrir, et
+ * qui lui survivait. Une bulle nomme une commande à qui la survole ; au doigt on
+ * vient de la toucher, elle n'a plus rien à nommer.
+ */
 function onEnter(): void {
   clear()
   if (props.disabled) return
+  if (!window.matchMedia('(hover: hover)').matches) return
   timer = setTimeout(() => void show(), HOVER_DELAY)
 }
 /**

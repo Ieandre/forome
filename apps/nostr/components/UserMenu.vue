@@ -3,7 +3,9 @@
     <!-- Identicon seul : le pseudo tient déjà dans le popover et dans le
          placeholder du composeur, et le mettre ici mangeait la place du titre
          de la liste au point de le tronquer à « khe… ». -->
-    <Hint :text="btnTitle" placement="bottom">
+    <!-- `disabled` pendant l'ouverture, comme `NotifBell` : la bulle nommerait
+         le bouton avec la phrase que le popover affiche déjà, par-dessus lui. -->
+    <Hint :text="btnTitle" placement="bottom" :disabled="open">
       <button type="button" class="um__btn" :aria-label="btnTitle" @click="open = !open">
         <UserAvatar v-if="identity.pubkey" :pubkey="identity.pubkey" :size="20" />
         <span v-else class="um__handle">…</span>

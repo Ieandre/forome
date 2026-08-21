@@ -93,6 +93,19 @@
             @close="stickerOpen = false"
           />
         </div>
+
+        <!-- Le sondage est facultatif et replié par défaut : la grande majorité
+             des topics n'en a pas, et un formulaire qui montre tout ce qu'on
+             pourrait faire donne à croire qu'il faut le remplir. -->
+        <button v-if="!pollOpen" type="button" class="nt__addpoll" @click="pollOpen = true">
+          + ajouter un sondage
+        </button>
+        <div v-else class="nt__poll">
+          <PollDraft ref="pollEl" @update:tags="pollTags = $event" />
+          <button type="button" class="btn btn--sm btn--ghost nt__droppoll" @click="dropPoll">
+            retirer le sondage
+          </button>
+        </div>
       </div>
     </div>
 
@@ -133,7 +146,7 @@
  * titre, corps, action en bas — parce que c'est le seul repère qu'on a avant
  * publication : rien ici n'est modifiable après coup.
  */
-import { ref, computed, onMounted } from 'vue'
+import { ref, shallowRef, computed, onMounted } from 'vue'
 import { topicPath } from '~/utils/permalink'
 import type { MarkupKind, BlockKind } from '~/utils/serialize'
 import { imetaTags, type ImageMeta } from '~/utils/media'
@@ -160,6 +173,22 @@ const editorEl = ref<{
 } | null>(null)
 const fileEl = ref<HTMLInputElement | null>(null)
 const stickerOpen = ref(false)
+
+/**
+ * Le sondage, facultatif. `pollTags` est `null` tant qu'il est incomplet — ce
+ * qui bloque la publication : un topic est définitif, donc il ne part pas avec un
+ * bulletin à moitié rempli.
+ *
+ * ⚠️ `shallowRef` et non `ref`, et ce n'est pas une optimisation. Un `ref`
+ * enveloppe les objets qu'on lui donne dans un proxy réactif ; ces tags finissent
+ * dans l'event envoyé au worker de minage, et `postMessage` ne sait pas cloner un
+ * proxy — la publication échouait sur « could not be cloned », sans rapport
+ * apparent avec le sondage. Tout ce qui part vers le worker doit rester du
+ * structured-cloneable, donc hors d'une référence profonde.
+ */
+const pollOpen = ref(false)
+const pollTags = shallowRef<string[][] | null>(null)
+const pollEl = ref<{ missing: string | null; endsInHours: number; started: boolean } | null>(null)
 
 const identity = useIdentityStore()
 const publisher = usePublisher()
@@ -196,6 +225,9 @@ const missing = computed<string | null>(() => {
   const hasBody = !!body.value.trim()
   if (hasTitle && !hasBody) return 'Il manque le premier message.'
   if (hasBody && !hasTitle) return 'Il manque le titre.'
+  // Le sondage ne réclame qu'une fois qu'on a commencé à le remplir : ouvert et
+  // vierge, il reste ce qu'il est — facultatif.
+  if (pollOpen.value && pollEl.value?.started) return pollEl.value.missing
   return null
 })
 
@@ -207,6 +239,9 @@ const canSubmit = computed(
   () =>
     !!title.value.trim() &&
     !!body.value.trim() &&
+    // Un sondage commencé doit être fini : le topic est définitif, et un bulletin
+    // à une seule réponse le resterait.
+    !(pollOpen.value && pollEl.value?.started && !pollTags.value) &&
     !publisher.publishing.value &&
     // Un dépôt en cours : publier maintenant partirait sans l'image ajoutée.
     !images.busy.value &&
@@ -215,7 +250,7 @@ const canSubmit = computed(
 
 /** Rien n'est enregistré nulle part : sortir d'ici perd le brouillon. */
 function leave(): void {
-  const dirty = !!title.value.trim() || !!body.value.trim()
+  const dirty = !!title.value.trim() || !!body.value.trim() || !!pollEl.value?.started
   if (dirty && !window.confirm('Ce brouillon sera perdu. Quitter quand même ?')) return
   void router.push('/')
 }
@@ -241,12 +276,33 @@ function onSticker(meta: ImageMeta): void {
   editorEl.value?.insertImage(meta)
 }
 
+/** Retirer le sondage jette le brouillon : il n'est enregistré nulle part. */
+function dropPoll(): void {
+  if (pollEl.value?.started && !window.confirm('Le sondage sera perdu. Le retirer ?')) return
+  pollOpen.value = false
+  pollTags.value = null
+}
+
 async function submit(): Promise<void> {
   if (!canSubmit.value) return
+
+  /*
+   * La date de fermeture est calculée **ici**, à l'envoi, et pas dans
+   * `PollDraft` : là-bas elle serait recalculée à chaque frappe, donc les tags
+   * changeraient sans arrêt — et comme les tags sont dans l'id, le minage
+   * spéculatif repartirait de zéro à chaque caractère tapé.
+   */
+  const hours = pollEl.value?.endsInHours ?? 0
+  const poll = pollTags.value
+    ? hours > 0
+      ? [...pollTags.value, ['endsAt', String(Math.floor(Date.now() / 1000) + hours * 3600)]]
+      : pollTags.value
+    : []
+
   const outcome = await publisher.publishTopic({
     title: title.value,
     content: body.value,
-    tags: imetaTags(body.value, images.attached.value),
+    tags: [...imetaTags(body.value, images.attached.value), ...poll],
   })
   if (outcome && outcome.result.accepted.length > 0) {
     await router.push(topicPath(outcome.event.id, title.value))
@@ -434,6 +490,39 @@ async function submit(): Promise<void> {
   font-size: var(--fs-lg);
   line-height: 1.6;
   color: var(--ink);
+}
+
+/* ------------------------------------------------------------------- sondage
+   L'invite est un lien discret, pas un bouton : ouvrir un formulaire facultatif
+   n'est pas une action au même rang que « Publier », et un troisième bouton
+   dans cette colonne se disputerait l'attention du titre. */
+.nt__addpoll {
+  align-self: flex-start;
+  padding: 2px 0;
+  background: none;
+  border: none;
+  color: var(--link);
+  font-size: var(--fs-md);
+  font-weight: 600;
+}
+.nt__addpoll:hover {
+  color: var(--link-hover);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.nt__poll {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+.nt__poll > :first-child {
+  width: 100%;
+}
+.nt__droppoll {
+  padding-inline: 0;
+  color: var(--ink-3);
 }
 
 /* ---------------------------------------------------------------------- pied */

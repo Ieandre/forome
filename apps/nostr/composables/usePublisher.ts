@@ -36,8 +36,11 @@ import {
   KIND_COMMENT,
   KIND_PROFILE,
   KIND_THREAD,
+  KIND_POLL_VOTE,
+  POLL_RESPONSE_TAG,
   communityTag,
   inCommunity,
+  normalizeChoices,
   provisionalId,
   type NostrEvent,
 } from '~/types/nostr'
@@ -310,6 +313,38 @@ export function usePublisher() {
     return run(unsigned, args.onOptimistic, { replaces })
   }
 
+  /**
+   * Vote (NIP-88, kind 1018). Un event par voix, et **le dernier compte** — c'est
+   * ainsi qu'on change d'avis sur un réseau où rien ne s'efface. Un vote sans
+   * `response` est donc le geste de retrait, pas une erreur.
+   *
+   * `poll` est le **topic lui-même** : le bulletin n'a pas d'event à lui, il vit
+   * dans les tags de la racine (voir `@forome/relay-policy/polls`). Le vote nomme
+   * donc le topic, ce qui est aussi ce que NIP-88 attend d'un `e`.
+   *
+   * Miné comme du contenu : voir `minPow` dans la policy. Le coût ne se voit pas,
+   * l'écran marque la voix au clic (`stores/polls.ts`).
+   */
+  async function publishVote(args: { poll: NostrEvent; choices: string[] }): Promise<PublishOutcome | null> {
+    const hint = relayStore.relays[0] ?? ''
+    const tags: string[][] = [
+      ['e', args.poll.id, hint, args.poll.pubkey],
+      // Le périmètre n'est pas posé par `buildUnsigned` — il ne le fait que pour
+      // les kinds 11 et 1111 — alors que la policy l'exige aussi du vote (voir
+      // `SCOPED_KINDS`). Sans ce tag, nos relais refuseraient chaque voix.
+      communityTag(),
+      ...normalizeChoices(args.poll, args.choices).map((id) => [POLL_RESPONSE_TAG, id]),
+    ]
+    const unsigned = buildUnsigned(KIND_POLL_VOTE, '', tags)
+    if (!unsigned) {
+      lastError.value = 'aucune identité'
+      return null
+    }
+    // Voter n'est pas prendre la parole : ça ne déclenche pas l'encart d'identité
+    // (§3.1), qui compte les messages publiés.
+    return run(unsigned, undefined, { countsAsPost: false })
+  }
+
   async function publishTopic(args: {
     title: string
     content: string
@@ -489,6 +524,7 @@ export function usePublisher() {
     publishReply,
     publishTopic,
     publishEdit,
+    publishVote,
     publishProfile,
     publishList,
     publishAppData,

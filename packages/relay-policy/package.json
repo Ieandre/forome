@@ -8,7 +8,8 @@
     ".": "./src/index.ts",
     "./strfry": "./src/strfry-plugin.ts",
     "./moderation": "./src/moderation.ts",
-    "./revisions": "./src/revisions.ts"
+    "./revisions": "./src/revisions.ts",
+    "./polls": "./src/polls.ts"
   },
   "scripts": {
     "test": "vitest run",

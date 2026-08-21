@@ -34,6 +34,36 @@ export {
  */
 export { COMMUNITY, communityTag, communityFilter, inCommunity } from '@forome/relay-policy'
 
+/**
+ * Format des sondages (NIP-88), réexporté depuis le code partagé pour la même
+ * raison que les révisions : le dépouillement doit donner le même résultat chez
+ * deux lecteurs, donc il n'existe qu'en un seul endroit — et c'est le même
+ * fichier que celui dont la policy tire sa validation de forme.
+ */
+export {
+  KIND_POLL_VOTE,
+  POLL_RESPONSE_TAG,
+  MIN_OPTIONS,
+  MAX_OPTIONS,
+  MAX_OPTION_LABEL,
+  hasPoll,
+  pollOptionsOf,
+  pollTypeOf,
+  pollEndsAt,
+  pollTags,
+  isPollClosed,
+  voteTargetOf,
+  voteChoicesOf,
+  normalizeChoices,
+  badPoll,
+  badVote,
+  tallyPoll,
+  pollShare,
+  type PollType,
+  type PollOption,
+  type PollTally,
+} from '@forome/relay-policy/polls'
+
 /** Kinds utilisés (spec §2.3). */
 export const KIND_PROFILE = 0
 export const KIND_NOTE = 1

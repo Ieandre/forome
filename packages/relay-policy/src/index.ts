@@ -17,6 +17,7 @@ import { verifyEvent } from 'nostr-tools/pure'
 import { getPow } from 'nostr-tools/nip13'
 import type { Event } from 'nostr-tools/core'
 import { EDIT_TAG } from './revisions.js'
+import { KIND_POLL_VOTE, badPoll, badVote } from './polls.js'
 
 /** Kinds que ce forum accepte. Tout le reste est hors sujet pour ce relais. */
 export const KIND_PROFILE = 0
@@ -29,6 +30,11 @@ export const KIND_APP_DATA = 30078
 export const KIND_GIFT_WRAP = 1059
 /** NIP-56 : signalement d'un message ou d'une clé (doc modération §7). */
 export const KIND_REPORT = 1984
+/**
+ * NIP-88 : le vote. Le sondage, lui, n'a pas de kind à lui — il est porté par
+ * les tags du topic qu'il accompagne (voir `./polls`).
+ */
+export { KIND_POLL_VOTE } from './polls.js'
 /**
  * NIP-46 : trafic du signeur distant. **Éphémère** (plage 20000–29999) : un
  * relais le diffuse et ne le stocke pas.
@@ -72,8 +78,22 @@ export function isEphemeralKind(kind: number): boolean {
  */
 export const COMMUNITY = 'forome'
 
-/** Kinds dont le périmètre est vérifié : le contenu public du forum. */
-const SCOPED_KINDS = new Set([KIND_THREAD, KIND_COMMENT])
+/**
+ * Kinds dont le périmètre est vérifié : le contenu public du forum.
+ *
+ * Le vote (kind 1018) en fait partie, et ce n'est pas évident : il ne nomme
+ * qu'un id de sondage, donc son périmètre se déduirait du bulletin qu'il vise.
+ * Sauf que la policy est sans état — elle ne détient pas ce bulletin. Sans la
+ * marque, ce relais accepterait donc les votes de tout Nostr pour des sondages
+ * qu'il n'a jamais vus, et c'est le trou par lequel un relais de forum
+ * redevient un relais généraliste.
+ *
+ * Contrepartie assumée : un client NIP-88 étranger ne pose pas cette marque,
+ * donc son vote sur un de nos sondages n'entre pas chez nous. C'est la limite
+ * déjà acceptée pour les réponses d'autres clients (voir `COMMUNITY`) — on lit
+ * le forum sur nos relais, et le vote reste sur les siens.
+ */
+const SCOPED_KINDS = new Set([KIND_THREAD, KIND_COMMENT, KIND_POLL_VOTE])
 
 /** Le tag à poser sur tout topic ou message publié par le forum. */
 export function communityTag(community = COMMUNITY): string[] {
@@ -163,6 +183,7 @@ export const DEFAULT_POLICY: PolicyConfig = {
     KIND_GIFT_WRAP,
     KIND_NOSTR_CONNECT,
     KIND_REPORT,
+    KIND_POLL_VOTE,
   ],
   minPow: {
     // Le contenu public est taxé ; le profil et les listes ne le sont pas —
@@ -193,6 +214,13 @@ export const DEFAULT_POLICY: PolicyConfig = {
     // panneau se noie. Le tri par voix distinctes (doc §7) fait le reste du
     // travail contre le flood.
     [KIND_REPORT]: 14,
+    // Un sondage est du contenu public, il est taxé comme tel. Le **vote** aussi,
+    // et à la même hauteur, pour deux raisons : c'est l'écriture la plus facile à
+    // produire en masse du forum (un tag, aucun texte), et son coût ne se voit
+    // pas — l'écran marque le vote au clic et le minage se fait derrière
+    // (`stores/polls.ts`). Un plancher plus bas ferait du vote la porte la moins
+    // chère pour écrire chez nous, sans rien gagner de perceptible.
+    [KIND_POLL_VOTE]: 14,
     default: 16,
   },
   // Fenêtre de tolérance sur l'horodatage (§2.4) : `created_at` est une
@@ -352,6 +380,29 @@ export function evaluate(
   }
   if (badEditTag(ev)) {
     return { accept: false, reason: 'invalid: tag edit mal formé' }
+  }
+  /*
+   * Forme des sondages (voir `./polls`). Comme le tag `edit`, on ne refuse ici
+   * que ce qui serait **définitivement illisible** : un bulletin sans réponse ou
+   * un vote qui ne nomme aucun topic ne peut pas être corrigé après coup, il
+   * resterait en tête du fil pour toujours.
+   *
+   * Le sondage se valide sur le **topic** parce qu'il n'a pas d'event à lui : ce
+   * sont des tags du kind 11. `badPoll` rend donc `null` pour les topics qui n'en
+   * portent pas, c'est-à-dire presque tous.
+   *
+   * Ce qui n'est pas vérifiable ici : voter sur un topic verrouillé. Un topic
+   * verrouillé ferme son composeur et fait refuser les réponses, mais la policy
+   * est sans état — elle ne peut pas savoir si le `e` d'un vote désigne un topic
+   * verrouillé sans le détenir.
+   */
+  if (ev.kind === KIND_THREAD) {
+    const why = badPoll(ev)
+    if (why) return { accept: false, reason: `invalid: ${why}` }
+  }
+  if (ev.kind === KIND_POLL_VOTE) {
+    const why = badVote(ev)
+    if (why) return { accept: false, reason: `invalid: ${why}` }
   }
   const size = utf8Length(ev.content)
   if (size > cfg.maxContentBytes) {

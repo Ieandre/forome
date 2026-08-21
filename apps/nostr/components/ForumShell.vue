@@ -35,6 +35,11 @@
 
       <TopicModeration v-if="modPanel && openTopicId" :topic-id="openTopicId" @close="modPanel = false" />
 
+      <!-- Le bulletin se pose au-dessus du fil et hors de son défilement : c'est
+           une pièce du topic, comme son titre, pas un message qu'on croise en
+           remontant. Il ne rend rien si le topic n'en porte pas. -->
+      <TopicPoll />
+
       <PostFeed ref="feedEl" :topic-id="openTopicId" :unread-since="unreadSince" @reply="onReplyRequest" />
 
       <!-- Le flux global est un mode de test de débit, pas un topic : on n'y
@@ -147,6 +152,7 @@ const topicStore = useTopicStore()
 const profiles = useProfileStore()
 const mod = useModerationStore()
 const reading = useReadingStore()
+const polls = usePollStore()
 const router = useRouter()
 const modPanel = ref(false)
 const replyTo = ref<NostrEvent | null>(null)
@@ -226,6 +232,14 @@ watch(
   },
   { immediate: true },
 )
+
+/**
+ * Le sondage suit la **racine**, parce qu'il est dedans : ses réponses sont des
+ * tags du kind 11. Il n'y a donc rien à charger — seulement à attendre que la
+ * racine arrive, ce qui sur un permalien se fait après l'id du topic
+ * (`fetchRoot`). `follow` ferme de lui-même sur un topic sans sondage.
+ */
+watch(root, (ev) => polls.follow(ev), { immediate: true })
 
 /**
  * Marque le topic ouvert comme lu (§ `stores/reading.ts`). Le déclencheur est la

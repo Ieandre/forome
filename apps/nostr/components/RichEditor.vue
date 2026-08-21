@@ -19,6 +19,33 @@
     @click="onClick"
   />
 
+  <!-- Menu de mentions. Au `body` comme la poignée, et pour la même raison : le
+       champ défile, un enfant serait rogné par son overflow. Il suit le caret,
+       donc il se replace au défilement au lieu de se fermer — on est en train
+       d'écrire dedans. -->
+  <Teleport to="body">
+    <div v-if="menuOpen" ref="menuEl" class="re-mn" :style="menuStyle">
+      <p v-if="atCap" class="re-mn__note">
+        {{ MAX_MENTIONS }} mentions au maximum dans un message.
+      </p>
+      <ul v-else class="re-mn__list" role="listbox" aria-label="mentionner quelqu'un">
+        <li v-for="(c, i) in mentions" :key="c.pubkey" role="option" :aria-selected="i === active">
+          <!-- `mousedown.prevent` : sans lui le champ perd le focus avant le clic,
+               donc la sélection à remplacer n'existe plus au moment d'insérer. -->
+          <button
+            type="button"
+            class="re-mn__item"
+            :class="{ 're-mn__item--on': i === active }"
+            @mousedown.prevent="pickMention(i)"
+          >
+            <span class="re-mn__name">{{ c.name }}</span>
+            <span v-if="c.disc" class="re-mn__disc mono">·{{ c.disc }}</span>
+          </button>
+        </li>
+      </ul>
+    </div>
+  </Teleport>
+
   <!-- Poignée de redimensionnement de l'image sélectionnée. Au `body` et en
        `fixed` : le champ défile, un enfant serait rogné par son overflow. En
        contrepartie elle ne suit pas le défilement — d'où la fermeture au scroll,
@@ -70,18 +97,30 @@
  * second renderer balisage → DOM, et un aller-retour à chaque frappe
  * repositionnerait le curseur. Pour vider, l'appelant utilise `clear()`.
  */
-import { ref, onMounted, onBeforeUnmount } from 'vue'
-import { serializeToMarkup, markupToDom } from '~/utils/serialize'
+import { ref, computed, nextTick, watch, onMounted, onBeforeUnmount } from 'vue'
+import { serializeToMarkup, markupToDom, type NameOf } from '~/utils/serialize'
 import type { MarkupKind, BlockKind } from '~/utils/serialize'
 import { postImageSrc, IMG_DISPLAY_MIN, IMG_DISPLAY_MAX } from '~/utils/media'
+import { MAX_MENTIONS, type MentionCandidate } from '~/utils/mentions'
 
 // Deux racines (le champ + le Teleport de la poignée) : l'héritage automatique
 // des attributs ne joue plus, le champ les reprend par `v-bind="$attrs"`.
 defineOptions({ inheritAttrs: false })
 
 const props = withDefaults(
-  defineProps<{ placeholder?: string; label?: string; submitOnEnter?: boolean }>(),
-  { placeholder: '', label: 'Message', submitOnEnter: true },
+  defineProps<{
+    placeholder?: string
+    label?: string
+    submitOnEnter?: boolean
+    /**
+     * Candidats à afficher pour la frappe `@…` en cours. L'éditeur détecte la
+     * frappe et remonte la requête ; c'est l'hôte qui sait **qui** proposer —
+     * lui seul connaît les gens du fil et les suivis. Voir l'en-tête : cet
+     * éditeur ne parle ni aux stores ni au réseau.
+     */
+    mentions?: MentionCandidate[]
+  }>(),
+  { placeholder: '', label: 'Message', submitOnEnter: true, mentions: () => [] },
 )
 const emit = defineEmits<{
   'update:modelValue': [value: string]
@@ -90,6 +129,8 @@ const emit = defineEmits<{
   files: [files: File[]]
   /** L'auteur a donné une largeur d'affichage à une image (poignée de coin). */
   imageResize: [url: string, width: number]
+  /** Frappe `@requête` en cours, ou `null` quand il n'y en a plus. */
+  'update:mentionQuery': [query: string | null]
 }>()
 
 const el = ref<HTMLElement | null>(null)
@@ -111,6 +152,9 @@ function rememberCaret(): void {
   if (!root || !sel || sel.rangeCount === 0) return
   const range = sel.getRangeAt(0)
   if (root.contains(range.commonAncestorContainer)) caret = range.cloneRange()
+  // Clic ou flèche ailleurs : le `@` qu'on complétait n'est plus sous le caret,
+  // et un menu qui survit à ça insère la mention au mauvais endroit.
+  if (trigger && range.startContainer !== trigger.node) closeMention()
 }
 
 /** Rend la main au champ, curseur là où l'auteur l'avait laissé. */
@@ -146,10 +190,20 @@ onMounted(() => {
     /* navigateur sans execCommand : la frappe marche, la barre d'outils non */
   }
   document.addEventListener('selectionchange', rememberCaret)
+  // Capture : le champ lui-même défile pendant la frappe, et son scroll ne
+  // remonte pas jusqu'à `window` autrement.
+  window.addEventListener('scroll', onViewportShift, true)
+  window.addEventListener('resize', onViewportShift)
 })
+
+function onViewportShift(): void {
+  if (query.value !== null) void placeMenu()
+}
 
 onBeforeUnmount(() => {
   document.removeEventListener('selectionchange', rememberCaret)
+  window.removeEventListener('scroll', onViewportShift, true)
+  window.removeEventListener('resize', onViewportShift)
   unpick()
 })
 
@@ -161,6 +215,7 @@ function onInput(): void {
   // La frappe redessine le champ : la poignée, elle, resterait sur l'ancienne
   // position de l'image — et l'image sélectionnée a pu être effacée.
   unpick()
+  detectMention()
   emitValue()
 }
 
@@ -352,6 +407,173 @@ function onHandleUp(): void {
   drag = null
 }
 
+/* ------------------------------------------------------------------ mentions
+ *
+ * Taper `@` ouvre un menu ; choisir quelqu'un remplace le `@requête` par une
+ * pastille non éditable qui porte sa CLÉ (`data-mention`). La sérialisation en
+ * fait un `nostr:npub1…` et le publieur en tire le tag `p` — voir
+ * `utils/mentions.ts` pour le pourquoi de ce format.
+ *
+ * L'éditeur ne cherche pas les candidats lui-même : il remonte la requête et
+ * reçoit la liste (prop `mentions`). Il ne connaît donc toujours ni les clés ni
+ * le réseau, comme pour les images.
+ */
+
+const query = ref<string | null>(null)
+const active = ref(0)
+const menuEl = ref<HTMLElement | null>(null)
+const menuStyle = ref<Record<string, string>>({})
+const atCap = ref(false)
+
+/** Le `@requête` en cours de frappe, à remplacer par la pastille. */
+let trigger: { node: Text; start: number } | null = null
+
+const menuOpen = computed(
+  () => query.value !== null && (atCap.value || props.mentions.length > 0),
+)
+
+/**
+ * Amorce d'une mention : un `@` en début de mot, suivi de ce qui a été tapé
+ * depuis. Le `@` collé à la fin d'un mot (`a@b`) n'en est pas une — c'est une
+ * adresse e-mail, et l'ouvrir sur chaque arobase rendrait le menu insupportable.
+ */
+const MENTION_TYPING = /(?:^|[\s(\[«"'])@([^\s@]{0,30})$/u
+
+function closeMention(): void {
+  trigger = null
+  atCap.value = false
+  if (query.value === null) return
+  query.value = null
+  emit('update:mentionQuery', null)
+}
+
+/** true dans un bloc ou un fragment de code, où une npub s'affiche littéralement. */
+function inCode(node: Node): boolean {
+  let cur: Node | null = node
+  while (cur && cur !== el.value) {
+    if (cur.nodeType === Node.ELEMENT_NODE) {
+      const e = cur as HTMLElement
+      if (e.tagName === 'PRE' || e.tagName === 'CODE' || e.dataset.markup === 'code') return true
+    }
+    cur = cur.parentNode
+  }
+  return false
+}
+
+function detectMention(): void {
+  const root = el.value
+  const sel = window.getSelection()
+  if (!root || !sel || sel.rangeCount === 0) return closeMention()
+
+  const range = sel.getRangeAt(0)
+  const node = range.startContainer
+  if (!range.collapsed || !root.contains(node) || node.nodeType !== Node.TEXT_NODE) {
+    return closeMention()
+  }
+  if (inCode(node)) return closeMention()
+
+  const before = (node.textContent ?? '').slice(0, range.startOffset)
+  const m = MENTION_TYPING.exec(before)
+  if (!m) return closeMention()
+
+  trigger = { node: node as Text, start: range.startOffset - (m[1]!.length + 1) }
+  atCap.value = root.querySelectorAll('[data-mention]').length >= MAX_MENTIONS
+  active.value = 0
+  if (query.value !== m[1]) {
+    query.value = m[1]!
+    emit('update:mentionQuery', query.value)
+  }
+  void placeMenu()
+}
+
+/**
+ * Pose le menu sous le `@` en cours, en coordonnées d'écran.
+ *
+ * La mesure porte sur un range **non replié** (du `@` au caret) : le rectangle
+ * d'un range replié est vide dans plusieurs navigateurs, et le menu se
+ * retrouvait dans le coin de la page.
+ */
+async function placeMenu(): Promise<void> {
+  await nextTick()
+  const t = trigger
+  const sel = window.getSelection()
+  if (!t || !sel || sel.rangeCount === 0) return
+
+  const caret = sel.getRangeAt(0)
+  const probe = document.createRange()
+  try {
+    probe.setStart(t.node, t.start)
+    probe.setEnd(caret.endContainer, caret.endOffset)
+  } catch {
+    // le nœud du `@` a disparu entre-temps (frappe rapide, `clear()`)
+    return closeMention()
+  }
+  const r = probe.getBoundingClientRect()
+  if (!r.width && !r.height) return
+
+  const h = menuEl.value?.getBoundingClientRect().height ?? 200
+  const w = menuEl.value?.getBoundingClientRect().width ?? 240
+  const below = window.innerHeight - r.bottom - 8
+  const top = below >= h || below >= r.top ? r.bottom + 6 : r.top - 6 - h
+  const left = Math.min(Math.max(r.left, 8), Math.max(8, window.innerWidth - 8 - w))
+  menuStyle.value = { top: `${Math.round(top)}px`, left: `${Math.round(left)}px` }
+}
+
+function pickMention(i: number): void {
+  const c = props.mentions[i]
+  const t = trigger
+  const root = el.value
+  const sel = window.getSelection()
+  if (!c || !t || !root || atCap.value || !sel || sel.rangeCount === 0) return
+
+  const caret = sel.getRangeAt(0)
+  const range = document.createRange()
+  try {
+    range.setStart(t.node, t.start)
+    range.setEnd(caret.endContainer, caret.endOffset)
+  } catch {
+    return closeMention()
+  }
+  range.deleteContents()
+
+  const chip = document.createElement('span')
+  chip.dataset.mention = c.pubkey
+  chip.className = 're-mention'
+  // Non éditable : la pastille s'efface d'un seul retour arrière. Corriger le
+  // pseudo à l'intérieur ne changerait de toute façon rien à la clé publiée.
+  chip.setAttribute('contenteditable', 'false')
+  chip.textContent = `@${c.name}`
+  range.insertNode(chip)
+
+  // Espace insécable après la pastille : une espace ordinaire en fin de champ est
+  // effondrée par le navigateur, et sans séparateur le mot suivant se collerait à
+  // l'URI — le parseur l'avalerait dans le bech32 et la mention deviendrait du
+  // texte. La sérialisation la rend en espace ordinaire.
+  const space = document.createTextNode('\u00a0')
+  range.setStartAfter(chip)
+  range.collapse(true)
+  range.insertNode(space)
+
+  range.setStartAfter(space)
+  range.collapse(true)
+  sel.removeAllRanges()
+  sel.addRange(range)
+  rememberCaret()
+
+  closeMention()
+  emitValue()
+}
+
+/** La liste change (profils arrivés, requête affinée) : replacer et recadrer. */
+watch(
+  () => props.mentions,
+  () => {
+    if (query.value === null) return
+    if (active.value >= props.mentions.length) active.value = 0
+    void placeMenu()
+  },
+)
+
 const INLINE_COMMAND: Partial<Record<MarkupKind, string>> = {
   bold: 'bold',
   italic: 'italic',
@@ -430,6 +652,38 @@ function insertLink(): void {
 }
 
 function onKeydown(e: KeyboardEvent): void {
+  /*
+   * Le menu de mentions capte le clavier en premier : tant qu'il est ouvert,
+   * Entrée choisit un candidat au lieu de poster le message. C'est l'ordre qui
+   * compte ici — publier « salut @kh » à la place d'insérer la mention est une
+   * erreur définitive sur un réseau sans suppression.
+   */
+  if (menuOpen.value) {
+    const n = props.mentions.length
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      closeMention()
+      return
+    }
+    if (n > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        active.value = (active.value + 1) % n
+        return
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        active.value = (active.value - 1 + n) % n
+        return
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault()
+        pickMention(active.value)
+        return
+      }
+    }
+  }
+
   if (e.key === 'Escape' && picked.value) {
     unpick()
     return
@@ -455,6 +709,7 @@ function onKeydown(e: KeyboardEvent): void {
 
 function clear(): void {
   unpick()
+  closeMention()
   if (el.value) el.value.innerHTML = ''
   caret = null
   emit('update:modelValue', '')
@@ -471,11 +726,15 @@ function clear(): void {
  * Par nœuds DOM et non `innerHTML` : `markupToDom` construit des éléments, rien
  * du contenu ne repasse jamais par une chaîne de HTML.
  */
-function seed(markup: string): void {
+function seed(markup: string, nameOf?: NameOf): void {
   const root = el.value
   if (!root) return
   unpick()
-  root.replaceChildren(markupToDom(markup))
+  closeMention()
+  // `nameOf` : le pseudo à écrire dans les pastilles de mention du message
+  // rouvert. Sans lui elles retomberaient sur `khey_…`, donc corriger une faute
+  // changerait sous les yeux de l'auteur des pseudos qu'il n'a pas touchés.
+  root.replaceChildren(markupToDom(markup, document, nameOf))
   caret = null
   emitValue()
 }
@@ -627,5 +886,74 @@ defineExpose({ toggleInline, toggleBlock, insertLink, insertImage, clear, seed, 
   padding: 0 3px;
   background: var(--surface-3, rgba(0, 0, 0, 0.1));
   border-bottom: 1px dashed var(--ink-4, currentColor);
+}
+
+/* Pastille de mention pendant la frappe : le même bleu qu'au fil (voir
+   `PostMention`), en plus discret — ici elle est un objet qu'on peut effacer,
+   pas un lien qu'on peut suivre. */
+.re__field :deep(.re-mention) {
+  color: var(--link, currentColor);
+  font-weight: 600;
+  white-space: nowrap;
+  /* Le caret ne peut pas entrer dedans (`contenteditable=false`) : sans ce
+     signal, on croit pouvoir corriger le pseudo à la main. */
+  cursor: default;
+}
+
+/* Le menu de mentions, téléporté au body : voir le Teleport du template. */
+.re-mn {
+  position: fixed;
+  z-index: 80;
+  min-width: 180px;
+  max-width: min(320px, calc(100vw - 16px));
+  padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-control, 9px);
+  box-shadow: var(--shadow-pop);
+}
+.re-mn__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  /* Six candidats tiennent sans défilement ; au-delà, on cherche par la frappe
+     plutôt qu'à la molette. */
+  max-height: 232px;
+  overflow-y: auto;
+}
+.re-mn__item {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  width: 100%;
+  padding: 5px 8px;
+  border: none;
+  border-radius: var(--r-pastille, 6px);
+  background: none;
+  font: inherit;
+  font-size: var(--fs-md);
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+.re-mn__item--on,
+.re-mn__item:hover {
+  background: var(--surface-3);
+}
+.re-mn__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.re-mn__disc {
+  flex-shrink: 0;
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+}
+.re-mn__note {
+  margin: 0;
+  padding: 6px 8px;
+  font-size: var(--fs-sm);
+  color: var(--ink-3);
 }
 </style>

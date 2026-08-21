@@ -72,6 +72,8 @@
               label="Message"
               placeholder="ton message"
               :submit-on-enter="false"
+              :mentions="mentions"
+              @update:mention-query="mentionQuery = $event"
               @update:model-value="body = $event"
               @files="attachImages"
               @image-resize="images.resize"
@@ -144,6 +146,13 @@ const IRREVERSIBLE = 'Publier envoie ce topic sur le réseau : tu ne pourras plu
 
 const title = ref('')
 const body = ref('')
+
+/**
+ * Complétion `@…` : ici le vivier n'a pas de fil d'où tirer des participants —
+ * un topic qui n'existe pas encore n'a personne dedans. Restent les suivis.
+ */
+const mentionQuery = ref<string | null>(null)
+const mentions = useMentionSuggestions(mentionQuery)
 const titleEl = ref<HTMLTextAreaElement | null>(null)
 const editorEl = ref<{
   toggleInline: (k: MarkupKind) => void

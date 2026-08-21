@@ -31,6 +31,7 @@
 
 /* ------------------------------------------------------------------ types */
 
+import { decode } from 'nostr-tools/nip19'
 import { isImageUrl } from '~/utils/media'
 
 export type InlineToken =
@@ -48,6 +49,13 @@ export type InlineToken =
    * (voir `postImageSrc`). Le rendu la remplace au dernier moment.
    */
   | { type: 'image'; href: string; alt: string }
+  /**
+   * Mention (NIP-27). Le token ne porte que la **clé** : le pseudo est résolu au
+   * rendu, jamais figé dans le message. Sur Nostr un nom n'est pas unique
+   * (spec §3.5), donc écrire `@pseudo` dans le contenu désignerait n'importe qui
+   * — et un pseudo changé laisserait derrière lui des mentions périmées.
+   */
+  | { type: 'mention'; pubkey: string }
 
 export type Block =
   | { type: 'paragraph'; children: InlineToken[] }
@@ -93,6 +101,31 @@ function isSafeHref(href: string): boolean {
 
 /** URL nue, pour la détection automatique. Bornée pour rester lisible. */
 const BARE_URL = /(https?:\/\/[^\s<>"'`)\]]{1,2000})/
+
+/**
+ * Mention NIP-27 : `nostr:npub1…` ou `nostr:nprofile1…` posé nu dans le texte.
+ *
+ * C'est la forme que produisent et lisent les autres clients Nostr. Le jeu de
+ * caractères est celui de bech32 (ni `1`, ni `b`, ni `i`, ni `o`), et la borne
+ * haute évite qu'un pavé de bech32 collé fasse une capture d'un kilooctet — la
+ * validation réelle, elle, est faite par le décodage : ce qui ne décode pas
+ * s'affiche en texte.
+ */
+const BECH32 = '[023456789acdefghjklmnpqrstuvwxyz]'
+const MENTION_URI = new RegExp(`nostr:(n(?:pub|profile)1${BECH32}{6,120})`)
+
+/**
+ * La même reconnaissance, pour qui a besoin de **remplacer** les mentions dans du
+ * texte plat plutôt que de les analyser (`quotePreview`). Un accès par fonction
+ * et non une constante partagée : un `RegExp` global porte son `lastIndex`, donc
+ * deux appelants qui se le passeraient sauteraient des occurrences.
+ */
+export function mentionUriRegex(): RegExp {
+  return new RegExp(MENTION_URI.source, 'g')
+}
+
+/** Les deux détections automatiques, en une passe : URL nue ou mention. */
+const AUTOLINK = new RegExp(`${BARE_URL.source}|${MENTION_URI.source}`)
 
 /* ------------------------------------------------------------------ inline */
 
@@ -212,9 +245,21 @@ function parseLinkAt(
 function linkifyInto(out: InlineToken[], text: string): void {
   let rest = text
   for (;;) {
-    const m = BARE_URL.exec(rest)
+    const m = AUTOLINK.exec(rest)
     if (!m || m.index === undefined) break
     pushText(out, rest.slice(0, m.index))
+
+    if (m[2]) {
+      const pubkey = decodeMentionUri(m[2])
+      // Bech32 mal formé ou somme de contrôle fausse : c'est du texte, pas une
+      // mention. Le montrer tel quel plutôt que de le masquer — l'auteur voit
+      // ce qu'il a écrit, et un lecteur peut le décoder à la main.
+      if (pubkey) out.push({ type: 'mention', pubkey })
+      else pushText(out, m[0])
+      rest = rest.slice(m.index + m[0].length)
+      continue
+    }
+
     const url = m[1]!
     // Ponctuation finale : « voir https://x.fr. » ne doit pas l'avaler.
     const trimmed = url.replace(/[.,;:!?)\]]+$/, '')
@@ -226,6 +271,25 @@ function linkifyInto(out: InlineToken[], text: string): void {
     rest = rest.slice(m.index + trimmed.length)
   }
   pushText(out, rest)
+}
+
+/**
+ * `npub1…` / `nprofile1…` → clé publique hex, ou `null`.
+ *
+ * `nprofile` porte en plus des indications de relais : on ne garde que la clé.
+ * Elles servent à trouver le profil, et le client sait déjà où lire (§9.2) —
+ * suivre les relais suggérés par un inconnu ouvrirait une connexion sortante
+ * choisie par l'auteur du message.
+ */
+export function decodeMentionUri(bech: string): string | null {
+  try {
+    const d = decode(bech)
+    if (d.type === 'npub') return d.data
+    if (d.type === 'nprofile') return d.data.pubkey
+  } catch {
+    /* somme de contrôle invalide : ce n'est pas une mention */
+  }
+  return null
 }
 
 /* ------------------------------------------------------------------ blocks */
@@ -322,5 +386,5 @@ export function parseRichText(src: string): Block[] {
  * lecteur. Chaque marqueur reconnu par `MARKERS` doit donc figurer ici.
  */
 export function hasMarkup(src: string): boolean {
-  return /(\*|~~|\+\+|\|\||`|^\s*[->*+]\s|^\s*\d{1,3}[.)]\s|\[[^\]]+\]\(|https?:\/\/)/m.test(src)
+  return /(\*|~~|\+\+|\|\||`|^\s*[->*+]\s|^\s*\d{1,3}[.)]\s|\[[^\]]+\]\(|https?:\/\/|nostr:)/m.test(src)
 }

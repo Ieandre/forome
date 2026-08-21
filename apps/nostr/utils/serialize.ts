@@ -23,6 +23,8 @@
 
 import { parseRichText, type Block, type InlineToken } from '~/utils/richtext'
 import { postImageSrc } from '~/utils/media'
+import { mentionUri } from '~/utils/mentions'
+import { kheyHandle } from '~/utils/nostr'
 
 /** Mises en forme en ligne proposées par la barre d'outils. */
 export type MarkupKind = 'bold' | 'italic' | 'underline' | 'strike' | 'spoiler' | 'code'
@@ -85,6 +87,18 @@ function serializeNode(node: Node, ctx: Ctx): string {
   const custom = el.dataset.markup
   if (custom === 'spoiler') return `||${childrenOf(el, ctx)}||`
   if (custom === 'code') return `\`${childrenOf(el, { ...ctx, raw: true })}\``
+
+  /*
+   * Mention : c'est la CLÉ qui est publiée, pas le pseudo affiché dans la
+   * pastille. Le texte de la pastille n'est qu'un rendu — le relire pour le
+   * publier écrirait un nom qui ne désigne personne (§3.5), et le figerait.
+   *
+   * Aucune espace ajoutée autour, contrairement à l'image : l'URI s'arrête
+   * d'elle-même au premier caractère hors bech32, et en ajouter ferait gagner un
+   * blanc au message à chaque correction.
+   */
+  const mention = el.dataset.mention
+  if (mention) return /^[0-9a-f]{64}$/.test(mention) ? mentionUri(mention) : childrenOf(el, ctx)
 
   if (tag === 'CODE' && el.parentElement?.tagName !== 'PRE') {
     return `\`${childrenOf(el, { ...ctx, raw: true })}\``
@@ -234,10 +248,29 @@ export function serializeToMarkup(root: HTMLElement): string {
  * l'exception qui rend l'édition possible, pas une remise en cause de la règle.
  */
 
-function inlineToNode(t: InlineToken, doc: Document): Node {
+/**
+ * Résout le pseudo affiché dans une pastille de mention à la réouverture d'un
+ * message. Le défaut (`khey_…`) est déterministe et sans dépendance : ce module
+ * ne connaît ni store ni réseau. L'appelant qui a les profils sous la main passe
+ * le sien, pour que corriger un message ne change pas les pseudos qu'il montre.
+ */
+export type NameOf = (pubkey: string) => string
+
+function inlineToNode(t: InlineToken, doc: Document, nameOf: NameOf): Node {
   switch (t.type) {
     case 'text':
       return doc.createTextNode(t.value)
+    case 'mention': {
+      // Pastille non éditable : une mention se supprime d'un coup de retour
+      // arrière, elle ne se corrige pas caractère par caractère — modifier le
+      // pseudo affiché ne changerait de toute façon pas la clé publiée.
+      const el = doc.createElement('span')
+      el.dataset.mention = t.pubkey
+      el.className = 're-mention'
+      el.setAttribute('contenteditable', 'false')
+      el.textContent = `@${nameOf(t.pubkey)}`
+      return el
+    }
     case 'code': {
       // `data-markup` et non `<code>` : c'est le marqueur que pose l'éditeur, et
       // celui que `serializeNode` relit sans dépendre de la balise.
@@ -251,7 +284,7 @@ function inlineToNode(t: InlineToken, doc: Document): Node {
       const el = doc.createElement('span')
       el.dataset.markup = 'spoiler'
       el.className = 're-spoiler'
-      appendInline(el, t.children, doc)
+      appendInline(el, t.children, doc, nameOf)
       return el
     }
     case 'link': {
@@ -274,7 +307,7 @@ function inlineToNode(t: InlineToken, doc: Document): Node {
       const el = doc.createElement(
         t.type === 'bold' ? 'strong' : t.type === 'italic' ? 'em' : t.type === 'strike' ? 's' : 'u',
       )
-      appendInline(el, t.children, doc)
+      appendInline(el, t.children, doc, nameOf)
       return el
     }
   }
@@ -289,8 +322,13 @@ function inlineToNode(t: InlineToken, doc: Document): Node {
  * ajouterait donc un espace de chaque côté de chaque image — un message
  * gagnerait des blancs à chaque correction.
  */
-function appendInline(parent: HTMLElement, tokens: InlineToken[], doc: Document): void {
-  const nodes = tokens.map((t) => inlineToNode(t, doc))
+function appendInline(
+  parent: HTMLElement,
+  tokens: InlineToken[],
+  doc: Document,
+  nameOf: NameOf,
+): void {
+  const nodes = tokens.map((t) => inlineToNode(t, doc, nameOf))
   for (let i = 0; i < nodes.length; i++) {
     if (tokens[i]!.type !== 'image') continue
     const before = nodes[i - 1]
@@ -305,18 +343,18 @@ function appendInline(parent: HTMLElement, tokens: InlineToken[], doc: Document)
   for (const n of nodes) parent.appendChild(n)
 }
 
-function blockToNode(b: Block, doc: Document): HTMLElement {
+function blockToNode(b: Block, doc: Document, nameOf: NameOf): HTMLElement {
   switch (b.type) {
     case 'quote': {
       const el = doc.createElement('blockquote')
-      appendBlocks(el, b.children, doc)
+      appendBlocks(el, b.children, doc, nameOf)
       return el
     }
     case 'list': {
       const el = doc.createElement(b.ordered ? 'ol' : 'ul')
       for (const item of b.items) {
         const li = doc.createElement('li')
-        appendInline(li, item, doc)
+        appendInline(li, item, doc, nameOf)
         el.appendChild(li)
       }
       return el
@@ -329,7 +367,7 @@ function blockToNode(b: Block, doc: Document): HTMLElement {
     }
     default: {
       const el = doc.createElement('div')
-      appendInline(el, b.children, doc)
+      appendInline(el, b.children, doc, nameOf)
       return el
     }
   }
@@ -351,7 +389,7 @@ function needsGap(prev: Block, next: Block): boolean {
   return false
 }
 
-function appendBlocks(parent: HTMLElement, blocks: Block[], doc: Document): void {
+function appendBlocks(parent: HTMLElement, blocks: Block[], doc: Document, nameOf: NameOf): void {
   blocks.forEach((b, i) => {
     const prev = blocks[i - 1]
     if (prev && needsGap(prev, b)) {
@@ -359,7 +397,7 @@ function appendBlocks(parent: HTMLElement, blocks: Block[], doc: Document): void
       gap.appendChild(doc.createElement('br'))
       parent.appendChild(gap)
     }
-    parent.appendChild(blockToNode(b, doc))
+    parent.appendChild(blockToNode(b, doc, nameOf))
   })
 }
 
@@ -370,10 +408,14 @@ function appendBlocks(parent: HTMLElement, blocks: Block[], doc: Document): void
  * l'affichage, donc ce qui s'ouvre dans l'éditeur est exactement ce que le fil
  * montrait — pas une seconde interprétation du même texte.
  */
-export function markupToDom(markup: string, doc: Document = document): DocumentFragment {
+export function markupToDom(
+  markup: string,
+  doc: Document = document,
+  nameOf: NameOf = kheyHandle,
+): DocumentFragment {
   const frag = doc.createDocumentFragment()
   const host = doc.createElement('div')
-  appendBlocks(host, parseRichText(markup), doc)
+  appendBlocks(host, parseRichText(markup), doc, nameOf)
   while (host.firstChild) frag.appendChild(host.firstChild)
   return frag
 }

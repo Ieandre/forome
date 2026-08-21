@@ -96,7 +96,17 @@
  *     réponses et n'ajoutent jamais de rangée : elles remplacent le texte d'une
  *     rangée existante, sans toucher à son identité ni à sa place (`toPost`)
  */
-import { ref, shallowRef, triggerRef, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
+import {
+  ref,
+  shallowRef,
+  triggerRef,
+  computed,
+  nextTick,
+  provide,
+  onMounted,
+  onUnmounted,
+  watch,
+} from 'vue'
 import {
   KIND_COMMENT,
   KIND_NOTE,
@@ -848,7 +858,35 @@ function settleOwnEdit(anchorId: string, revisionId: string, accepted: boolean):
   markOwnState(anchorId, 'edit-failed')
 }
 
-defineExpose({ pushOwnPost, dropPost, markOwnState })
+/**
+ * Les gens de ce fil, du plus récent au plus ancien : le vivier de la
+ * complétion `@…` du composeur (`useMentionSuggestions`).
+ *
+ * Ordre par récence et non par volume de messages : celui à qui on répond vient
+ * de parler, et c'est lui qu'Entrée doit insérer. Borné, parce qu'un fil de
+ * trois cents messages n'a pas trois cents personnes utiles à proposer.
+ */
+const PARTICIPANTS_MAX = 40
+
+const participants = computed(() => {
+  const out: string[] = []
+  const seen = new Set<string>()
+  const list = posts.value
+  for (let i = list.length - 1; i >= 0 && out.length < PARTICIPANTS_MAX; i--) {
+    const key = list[i]!.pubkey
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(key)
+  }
+  return out
+})
+
+// Deux chemins pour la même liste, parce que les deux composeurs ne sont pas au
+// même endroit : `ForumShell` est le PARENT du fil (prop vers `Composer`), alors
+// que l'éditeur de correction vit DANS un message (injection).
+provide('threadParticipants', participants)
+
+defineExpose({ pushOwnPost, dropPost, markOwnState, participants })
 
 function teardown(): void {
   for (const s of subs) s.close()

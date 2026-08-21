@@ -11,6 +11,10 @@
 
     <code v-else-if="t.type === 'code'" class="rt-code">{{ t.value }}</code>
 
+    <!-- Mention : le composant résout le pseudo depuis la clé, il ne fait pas
+         confiance au texte du message (voir `PostMention`). -->
+    <PostMention v-else-if="t.type === 'mention'" :pubkey="t.pubkey" />
+
     <!-- Spoiler : masqué jusqu'au clic. `aria-expanded` et le titre disent ce
          que c'est, sinon un lecteur d'écran lirait le contenu masqué sans
          prévenir — ce qui annule le spoiler pour lui seul. -->

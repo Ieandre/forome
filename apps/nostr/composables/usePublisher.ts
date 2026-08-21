@@ -26,6 +26,7 @@ import {
   type NostrEvent,
 } from '~/types/nostr'
 import { KIND_REPORT } from '~/types/moderation'
+import { mentionTags } from '~/utils/mentions'
 import type { PublishResult } from '~/stores/relays'
 
 export interface PublishOutcome {
@@ -88,11 +89,28 @@ export function usePublisher() {
    */
   function buildUnsigned(kind: number, content: string, tags: string[][], createdAt = nowS()): UnsignedEvent | null {
     if (!identity.pubkey) return null
-    const scoped =
-      (kind === KIND_THREAD || kind === KIND_COMMENT) && !inCommunity({ tags })
-        ? [...tags, communityTag()]
-        : tags
-    return { kind, pubkey: identity.pubkey, created_at: createdAt, tags: scoped, content }
+    if (kind !== KIND_THREAD && kind !== KIND_COMMENT) {
+      return { kind, pubkey: identity.pubkey, created_at: createdAt, tags, content }
+    }
+
+    let out = inCommunity({ tags }) ? tags : [...tags, communityTag()]
+
+    /*
+     * Les mentions du texte deviennent des tags `p` — c'est ce qui fait qu'une
+     * mention **prévient** quelqu'un plutôt que d'être un lien décoratif : le
+     * canal personnel souscrit `{"#p": [ma clé]}` (`stores/notifications.ts`).
+     *
+     * Ici et pas dans chaque brouillon, pour la même raison que la marque de
+     * périmètre juste au-dessus : c'est le point de passage unique de toute
+     * publication (topic, réponse, révision), et un oubli produirait une mention
+     * visible que le mentionné ne verrait jamais. Avant le minage, donc dans
+     * l'id signé — un tag ajouté après invaliderait PoW et signature.
+     */
+    const already = out.filter((t) => t[0] === 'p' && t[1]).map((t) => t[1]!)
+    const mentions = mentionTags(content, already)
+    if (mentions.length) out = [...out, ...mentions]
+
+    return { kind, pubkey: identity.pubkey, created_at: createdAt, tags: out, content }
   }
 
   /**
@@ -152,7 +170,21 @@ export function usePublisher() {
         ['P', anchor.pubkey, hint],
       ]
     }
-    return anchor.tags.filter((t) => t[0] && THREAD_TAGS.has(t[0]))
+    /*
+     * Un seul tag `p` est recopié : le premier, celui de l'auteur du parent
+     * (NIP-22). Les suivants sont les **mentions de l'ancienne version**, et
+     * `buildUnsigned` les recalcule sur le nouveau texte. Les recopier ferait
+     * qu'une mention retirée en corrigeant continuerait de notifier son porteur,
+     * pour un message où son nom n'apparaît plus.
+     */
+    let keptP = false
+    return anchor.tags.filter((t) => {
+      if (!t[0] || !THREAD_TAGS.has(t[0])) return false
+      if (t[0] !== 'p') return true
+      if (keptP) return false
+      keptP = true
+      return true
+    })
   }
 
   function draftEdit(

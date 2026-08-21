@@ -21,6 +21,8 @@
       label="Corriger ce message"
       placeholder="le message"
       :submit-on-enter="false"
+      :mentions="mentions"
+      @update:mention-query="mentionQuery = $event"
       @update:model-value="draft = $event"
       @files="attachImages"
       @image-resize="onImageResize"
@@ -98,9 +100,9 @@
  * de preuve de travail affichée. Il ne publie rien lui-même — il rend un texte
  * et des tags à `PostFeed`, qui détient les events et l'affichage optimiste.
  */
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, inject, onMounted, type ComputedRef } from 'vue'
 import { imetaTags, type ImageMeta } from '~/utils/media'
-import type { MarkupKind, BlockKind } from '~/utils/serialize'
+import type { MarkupKind, BlockKind, NameOf } from '~/utils/serialize'
 
 const props = defineProps<{
   /** Le balisage de la version en vigueur, tel qu'il a été publié. */
@@ -111,8 +113,18 @@ const props = defineProps<{
 const emit = defineEmits<{ save: [content: string, tags: string[][]]; cancel: [] }>()
 
 const images = useImageUpload()
+const profiles = useProfileStore()
 
 const draft = ref(props.content)
+
+/**
+ * Complétion `@…`. Les gens du fil viennent par injection : cet éditeur vit
+ * DANS un message, pas à côté du fil (voir `PostFeed`). Le défaut vide couvre le
+ * cas où il serait monté ailleurs — les suivis suffisent alors.
+ */
+const threadPeople = inject<ComputedRef<string[]> | null>('threadParticipants', null)
+const mentionQuery = ref<string | null>(null)
+const mentions = useMentionSuggestions(mentionQuery, () => threadPeople?.value ?? [])
 const stickerOpen = ref(false)
 const confirmingRetract = ref(false)
 const editorEl = ref<{
@@ -120,13 +132,15 @@ const editorEl = ref<{
   toggleBlock: (k: BlockKind) => void
   insertLink: () => void
   insertImage: (img: ImageMeta) => void
-  seed: (markup: string) => void
+  seed: (markup: string, nameOf?: NameOf) => void
   focus: () => void
 } | null>(null)
 const fileEl = ref<HTMLInputElement | null>(null)
 
 onMounted(() => {
-  editorEl.value?.seed(props.content)
+  // Le résolveur de pseudos : les pastilles de mention du message rouvert
+  // doivent afficher les mêmes noms que le fil, pas le handle `khey_` de repli.
+  editorEl.value?.seed(props.content, (pubkey) => profiles.displayName(pubkey))
   /*
    * Réadopte les images déjà dans le message.
    *

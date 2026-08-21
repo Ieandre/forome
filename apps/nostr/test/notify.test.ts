@@ -74,6 +74,16 @@ describe('notifKindOf', () => {
     expect(notifKindOf(ev([['e', PARENT_ID], ['p', THIRD], ['p', ME]]), ME)).toBe('mention')
   })
 
+  /**
+   * Un kind 11 n'a pas de parent : y être tagué, c'est y être mentionné. Le
+   * repli sur le premier tag `p` annonçait « t'a répondu » sur le topic d'un
+   * inconnu qui venait de citer notre pseudo.
+   */
+  it('mention : un topic (kind 11) qui me tague', () => {
+    const topic: NostrEvent = { ...ev([['t', 'forome'], ['p', ME]]), kind: 11 }
+    expect(notifKindOf(topic, ME)).toBe('mention')
+  })
+
   it('citation par défaut quand rien ne permet de trancher', () => {
     // Dire « t'a répondu » d'une simple mention serait un mensonge ; l'inverse
     // n'est qu'une imprécision.

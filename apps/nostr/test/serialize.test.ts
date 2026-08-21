@@ -14,6 +14,9 @@ import { describe, it, expect } from 'vitest'
 import { markupToDom, serializeToMarkup } from '~/utils/serialize'
 import { parseRichText } from '~/utils/richtext'
 
+const NPUB_URI = 'nostr:npub142424242424242424242424242424242424242424242424242ssjg3fxl'
+const NPUB_B_URI = 'nostr:npub1hwamhwamhwamhwamhwamhwamhwamhwamhwamhwamhwamhwamhweqxqj78h'
+
 /** Rejoue le trajet complet d'une correction : on rouvre, on referme. */
 function roundTrip(markup: string): string {
   const host = document.createElement('div')
@@ -121,6 +124,37 @@ describe('markupToDom → serializeToMarkup', () => {
 
   it('image seule', () => {
     stable('https://img.example.org/a.png')
+  })
+
+  /*
+   * Mentions. Ce qui se perdrait ici serait une notification : la pastille de
+   * l'éditeur porte la clé dans `data-mention`, et son texte visible n'est qu'un
+   * pseudo. Si la sérialisation relisait ce texte, corriger un message
+   * remplacerait la mention par un `@pseudo` qui ne désigne personne — donc plus
+   * de tag `p`, donc plus personne de prévenu, sans le moindre message d'erreur.
+   */
+  it('mention au milieu d’une phrase', () => {
+    stable(`salut ${NPUB_URI} tu confirmes ?`)
+  })
+
+  it('mention seule', () => {
+    stable(NPUB_URI)
+  })
+
+  it('mention dans du balisage', () => {
+    stable(`**${NPUB_URI}**`)
+  })
+
+  it('deux mentions et une image dans la même phrase', () => {
+    stable(`${NPUB_URI} et ${NPUB_B_URI} regardez https://img.example.org/a.png`)
+  })
+
+  it('le pseudo affiché dans la pastille ne part jamais dans le message', () => {
+    // Le résolveur de pseudos est cosmétique : deux libellés différents doivent
+    // produire le même balisage, à l'octet près.
+    const host = document.createElement('div')
+    host.appendChild(markupToDom(NPUB_URI, document, () => 'Théo le grand'))
+    expect(serializeToMarkup(host)).toBe(NPUB_URI)
   })
 
   it('caractères de balisage échappés', () => {

@@ -67,6 +67,7 @@
           :root-id="openTopicId"
           :root="root"
           :reply-to="replyTo"
+          :participants="feedEl?.participants ?? []"
           @posted="onPosted"
           @settled="onPostSettled"
           @cancel-reply="replyTo = null"
@@ -159,6 +160,8 @@ const replyTo = ref<NostrEvent | null>(null)
 const feedEl = ref<{
   pushOwnPost: (ev: NostrEvent, replacedId?: string) => void
   markOwnState: (id: string, state: 'pending' | 'failed' | null) => void
+  /** Les gens du fil, pour la complétion `@…` du composeur. */
+  participants: string[]
 } | null>(null)
 
 /**

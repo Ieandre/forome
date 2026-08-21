@@ -899,12 +899,35 @@ function teardown(): void {
   targetId.value = null
 }
 
+/**
+ * Le fil rétrécit quand le composeur se déplie (et quand le clavier monte) :
+ * ~210 px d'un coup. `scrollTop` ne bouge pas dans ce cas, donc le bas du fil
+ * passe sous le composeur — on se retrouve décroché du direct sans avoir touché
+ * à l'écran, et « ↓ revenir en direct » apparaît tout seul. On se remet au
+ * contact, mais seulement si on y était : quelqu'un qui lisait plus haut doit
+ * rester où il lit.
+ */
+let sizeObs: ResizeObserver | null = null
+
 onMounted(() => {
   void loadInitial()
   subscribeLive()
+  const el = containerEl.value
+  if (el && typeof ResizeObserver !== 'undefined') {
+    sizeObs = new ResizeObserver(() => {
+      if (hooked.value) scrollToBottom()
+    })
+    sizeObs.observe(el)
+  }
 })
 
-onUnmounted(teardown)
+// `teardown` sert aussi au changement de topic, où le conteneur survit : la
+// coupure de l'observateur est donc à part, et seulement au démontage.
+onUnmounted(() => {
+  teardown()
+  sizeObs?.disconnect()
+  sizeObs = null
+})
 
 watch(
   () => props.topicId,

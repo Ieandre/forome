@@ -1,5 +1,5 @@
 <template>
-  <div class="composer">
+  <div class="composer" :class="{ 'composer--collapsed': collapsed }">
     <!-- Encart d'onboarding (spec v2 §3.1). Il apparaît APRÈS le premier post,
          jamais avant : « non bloquant » pris au mot — voir le commentaire du
          script pour l'écart assumé avec la formulation d'origine. -->
@@ -58,7 +58,14 @@
       action). Pas de rangée d'outils BBCode : rien ici ne rend le balisage, et
       un bouton « gras » qui insère du texte littéral serait un faux bouton.
     -->
-    <form class="composer__box" @submit.prevent="send">
+    <form
+      class="composer__box"
+      :class="{ 'composer__box--collapsed': collapsed }"
+      @submit.prevent="send"
+      @focusin="expanded = true"
+      @focusout="onFocusOut"
+      @click="onBoxClick"
+    >
       <div class="composer__top">
         <UserAvatar v-if="identity.pubkey" :pubkey="identity.pubkey" :size="18" />
         <span class="composer__as">{{ identity.displayName }}</span>
@@ -178,7 +185,7 @@
  * juste après, en ligne, dismissible. L'utilisateur apprend qui il est au moment
  * où ça devient pertinent, sans qu'on lui ait fait payer un clic pour écrire.
  */
-import { ref, computed } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import type { NostrEvent } from '~/types/nostr'
 import type { MarkupKind, BlockKind } from '~/utils/serialize'
 import { imetaTags, type ImageMeta } from '~/utils/media'
@@ -239,6 +246,86 @@ const postFailed = computed(
 function onEditorInput(value: string): void {
   draft.value = value
   onInput()
+}
+
+/* ----------------------------------------------------------------- repli
+ *
+ * Sur un téléphone, le composeur déplié occupait 261 px des 734 de l'écran :
+ * autant que le fil. Il les prenait pour une intention qu'on n'a pas encore eue,
+ * puisque au repos une barre d'outils et un bouton « Poster » ne servent à
+ * personne. Replié, il tient sur une ligne et rend ~210 px à la lecture.
+ *
+ * Il ne se referme JAMAIS sur du contenu : brouillon, image jointe, tiroir
+ * ouvert ou réponse ciblée le retiennent ouvert. Un tap à côté ne doit pas
+ * pouvoir escamoter un texte qu'on vient d'écrire — et replié sur un brouillon,
+ * la ligne affiche justement ce brouillon (l'éditeur reste monté, on ne masque
+ * que le chrome autour).
+ */
+const expanded = ref(false)
+
+/**
+ * Vrai là où le composeur déplié mange la moitié de l'écran : le téléphone en
+ * portrait, et le téléphone en PAYSAGE — 844 px de large, 390 de haut, qu'une
+ * requête de largeur seule prend pour un grand écran.
+ */
+const compact = ref(false)
+let compactMql: MediaQueryList | null = null
+function readCompact(): void {
+  compact.value = compactMql?.matches ?? false
+}
+onMounted(() => {
+  compactMql = window.matchMedia('(max-width: 700px), (max-height: 560px)')
+  readCompact()
+  compactMql.addEventListener('change', readCompact)
+})
+onUnmounted(() => compactMql?.removeEventListener('change', readCompact))
+
+const collapsed = computed(() => compact.value && !expanded.value)
+
+/**
+ * Ce qu'un repli escamoterait, et qui le retient donc ouvert.
+ *
+ * Un brouillon en texte n'en fait PAS partie : la barre repliée l'affiche, donc
+ * le replier ne cache rien — et c'est en pleine rédaction qu'on a le plus besoin
+ * de relire ce à quoi on répond. Une image jointe, elle, ne tient pas sur une
+ * ligne, et « ↳ réponse à X » disparaîtrait sans que rien ne le remplace.
+ */
+const wouldHideSomething = computed(
+  () =>
+    !!props.replyTo ||
+    stickerOpen.value ||
+    images.attached.value.length > 0 ||
+    images.busy.value,
+)
+
+/** « Citer » sur un message : le composeur s'ouvre et prend le curseur. */
+watch(
+  () => props.replyTo,
+  (to) => {
+    if (!to) return
+    expanded.value = true
+    void nextTick(() => editorEl.value?.focus())
+  },
+)
+
+function onBoxClick(): void {
+  if (!collapsed.value) return
+  expanded.value = true
+  void nextTick(() => editorEl.value?.focus())
+}
+
+/**
+ * Le focus sort de la boîte — pas seulement du champ : un clic sur « G » quitte
+ * le contenteditable pour le bouton, et `RichEditor` lui rend la main juste
+ * après (voir `restoreCaret`). Se replier là-dessus fermerait le composeur à
+ * chaque mise en gras.
+ */
+function onFocusOut(e: FocusEvent): void {
+  const box = e.currentTarget as HTMLElement
+  const next = e.relatedTarget as Node | null
+  if (next && box.contains(next)) return
+  if (wouldHideSomething.value) return
+  expanded.value = false
 }
 
 const nsec = computed(() => identity.exportNsec() ?? '(clé dans une extension NIP-07)')
@@ -656,5 +743,48 @@ function doneBackup(): void {
   .composer__box :deep(.composer__input) {
     min-height: 44px;
   }
+}
+/* ------------------------------------------------------------ COMPOSEUR REPLIÉ
+ * Une ligne : l'avatar, et le champ. Le chrome — outils, identité écrite,
+ * astuce clavier, « Poster » — n'apparaît qu'une fois le curseur dedans, parce
+ * qu'il ne sert qu'à ce moment-là. Voir l'en-tête `repli` du script.
+ *
+ * L'éditeur reste MONTÉ et visible : c'est ce qui fait que replier sur un
+ * brouillon en affiche la première ligne au lieu de « ta réponse », sans un
+ * état de plus à tenir. On masque le chrome, on ne démonte rien.
+ */
+.composer--collapsed {
+  padding-top: 7px;
+  padding-bottom: 7px;
+}
+.composer__box--collapsed {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  column-gap: 9px;
+  padding: 0 13px;
+  cursor: text;
+}
+.composer__box--collapsed .composer__top {
+  padding: 0;
+}
+.composer__box--collapsed .composer__as,
+.composer__box--collapsed .composer__toolbar,
+.composer__box--collapsed .composer__bottom {
+  display: none;
+}
+/* `1.6em` = exactement l'interligne du champ, donc UNE ligne pleine et pas de
+   deuxième ligne à moitié rognée. C'est ce qui borne la barre quand on la replie
+   sur un brouillon de dix lignes : elle en montre la première et ne bouge plus. */
+.composer__box--collapsed :deep(.composer__input) {
+  min-height: 0;
+  max-height: 1.6em;
+  overflow: hidden;
+  padding: 9px 0;
+  /* Le champ passe en `nowrap` le temps du repli — c'est ce qui rend l'ellipse
+     possible, un texte coupé net au bord se lisant comme un défaut d'affichage.
+     Sans effet sur ce qui sera publié : `pre-wrap` revient avec la classe. */
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 </style>

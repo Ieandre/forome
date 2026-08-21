@@ -1,42 +1,47 @@
 <template>
   <div class="mtb" role="toolbar" aria-label="mise en forme">
-    <div class="mtb__group">
-      <Hint v-for="b in inlineButtons" :key="b.kind" :text="b.title" placement="bottom">
-        <button
-          type="button"
-          class="mtb__btn"
-          :class="[`mtb__btn--${b.kind}`, { 'mtb__btn--wide': b.wide }]"
-          :aria-label="b.title"
-          @click="emit('inline', b.kind)"
-        >
-          {{ b.label }}
-        </button>
-      </Hint>
-    </div>
+    <!-- Les groupes de balisage sont dans un conteneur à part parce que sur
+         téléphone ils défilent horizontalement, et que `stickers` doit rester
+         hors du défilement (voir le bloc `pointer: coarse`). -->
+    <div class="mtb__flow">
+      <div class="mtb__group">
+        <Hint v-for="b in inlineButtons" :key="b.kind" :text="b.title" placement="bottom">
+          <button
+            type="button"
+            class="mtb__btn"
+            :class="[`mtb__btn--${b.kind}`, { 'mtb__btn--wide': b.wide }]"
+            :aria-label="b.title"
+            @click="emit('inline', b.kind)"
+          >
+            {{ b.label }}
+          </button>
+        </Hint>
+      </div>
 
-    <div class="mtb__group">
-      <Hint v-for="b in blockButtons" :key="b.kind" :text="b.title" placement="bottom">
-        <button type="button" class="mtb__btn" :aria-label="b.title" @click="emit('block', b.kind)">
-          {{ b.label }}
-        </button>
-      </Hint>
-      <Hint text="Lien (Ctrl+K)" placement="bottom">
-        <button type="button" class="mtb__btn" aria-label="Lien" @click="emit('link')">lien</button>
-      </Hint>
-      <!-- L'image se dépose aussi par collage et par glisser-déposer : le bouton
-           est la porte visible, pas la seule. Il s'annonce occupé pendant le
-           dépôt parce que c'est la seule action de la barre qui parle au réseau. -->
-      <Hint :text="uploading ? 'dépôt en cours…' : 'Image — ou colle-la directement (Ctrl+V)'" placement="bottom">
-        <button
-          type="button"
-          class="mtb__btn mtb__btn--wide"
-          aria-label="Ajouter une image"
-          :disabled="uploading"
-          @click="emit('image')"
-        >
-          {{ uploading ? 'dépôt…' : 'image' }}
-        </button>
-      </Hint>
+      <div class="mtb__group">
+        <Hint v-for="b in blockButtons" :key="b.kind" :text="b.title" placement="bottom">
+          <button type="button" class="mtb__btn" :aria-label="b.title" @click="emit('block', b.kind)">
+            {{ b.label }}
+          </button>
+        </Hint>
+        <Hint text="Lien (Ctrl+K)" placement="bottom">
+          <button type="button" class="mtb__btn" aria-label="Lien" @click="emit('link')">lien</button>
+        </Hint>
+        <!-- L'image se dépose aussi par collage et par glisser-déposer : le bouton
+             est la porte visible, pas la seule. Il s'annonce occupé pendant le
+             dépôt parce que c'est la seule action de la barre qui parle au réseau. -->
+        <Hint :text="uploading ? 'dépôt en cours…' : 'Image — ou colle-la directement (Ctrl+V)'" placement="bottom">
+          <button
+            type="button"
+            class="mtb__btn mtb__btn--wide"
+            aria-label="Ajouter une image"
+            :disabled="uploading"
+            @click="emit('image')"
+          >
+            {{ uploading ? 'dépôt…' : 'image' }}
+          </button>
+        </Hint>
+      </div>
     </div>
 
     <!-- Groupe à lui seul, et une surface au repos là où les autres sont du texte
@@ -115,9 +120,17 @@ const blockButtons: { kind: BlockKind; label: string; title: string }[] = [
   gap: 12px;
   flex-wrap: wrap;
 }
+.mtb__flow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
 /* Les groupes sont séparés par du vide, pas par un filet : une barre d'outils
    de six traits verticaux pèse plus lourd que ce qu'elle contient. */
 .mtb__group {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: 1px;
@@ -195,6 +208,37 @@ const blockButtons: { kind: BlockKind; label: string; title: string }[] = [
     min-width: 30px;
     min-height: 34px;
     padding: 4px 9px;
+  }
+}
+
+/* Treize boutons ne tiennent pas sur 390 px : la barre repliait sur deux
+   rangées — trois au doigt, où les cibles font 34 px — soit jusqu'à 90 px pris
+   au fil chaque fois qu'on écrit. Elle défile donc horizontalement.
+
+   Seuil en LARGEUR et non en `pointer: coarse` : c'est la place disponible qui
+   fait déborder la barre, et une fenêtre étroite à la souris déborde pareil.
+
+   `stickers` reste hors du défilement — c'est le bouton le plus utilisé de la
+   barre, il tomberait sinon tout au bout, invisible sans avoir poussé le
+   reste. */
+@media (max-width: 700px), (max-height: 560px) {
+  .mtb {
+    flex-wrap: nowrap;
+  }
+  .mtb__flow {
+    flex: 1;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    /* Le dégradé du bord droit est ce qui dit qu'il y a une suite : sans lui la
+       barre a l'air de s'arrêter pile où l'écran la coupe. Masque fixe et non
+       piloté par le défilement (`scroll-timeline` n'est pas partout) : il ment
+       de vingt pixels une fois arrivé au bout, et de rien le reste du temps. */
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 22px), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - 22px), transparent);
+  }
+  .mtb__flow::-webkit-scrollbar {
+    display: none;
   }
 }
 </style>

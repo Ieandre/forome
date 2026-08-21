@@ -540,6 +540,26 @@ async function copyPermalink(): Promise<void> {
   }
 }
 
+/* ------------------------------------------------------- tête sur TÉLÉPHONE
+ * La ligne méta répond à « est-ce que j'ouvre ce topic ? », et on est dedans :
+ * l'auteur est répété par le message #1 quarante pixels plus bas (avec son
+ * badge), le nombre de messages se lit sur leur numérotation, le nombre de
+ * kheys sert à choisir dans la liste, et « ça parle maintenant » se voit aux
+ * réponses qui arrivent. Elle coûtait 40 des 93 px de la tête — dont deux
+ * lignes au lieu d'une, parce que « retour » et « permalien » écrasent la
+ * colonne du titre à 217 px.
+ */
+@media (max-width: 700px), (max-height: 560px) {
+  .topic-head {
+    gap: 10px;
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+  .topic-head__meta {
+    display: none;
+  }
+}
+
 @media (max-width: 700px) {
   .shell__topic {
     border: none;

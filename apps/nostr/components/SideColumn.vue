@@ -57,10 +57,20 @@
     <DmList v-if="onDm" class="col__body" />
     <TopicList v-else class="col__body" :open-topic-id="openTopicId" :new-topic="newTopic" />
 
-    <!-- Le pied dit deux états, aucune commande : ce que devient un message une
-         fois posté, et à combien de relais on parle. L'indicateur de relais
-         était en haut, où il concurrençait la navigation pour une information
-         qu'on ne consulte qu'en cas de doute. -->
+    <!-- Le pied ne porte aucune commande de l'app : ce que devient un message une
+         fois posté, où se lit le code qui en décide, à combien de relais on
+         parle. L'indicateur de relais était en haut, où il concurrençait la
+         navigation pour une information qu'on ne consulte qu'en cas de doute.
+
+         Le lien des sources est ici et pas dans un menu : la licence du client
+         (AGPL) demande de les offrir à qui s'en sert par le réseau, et c'est le
+         seul endroit de l'écran où les deux autres phrases s'affirment — elles
+         ne valent que si on peut aller les vérifier depuis le même endroit.
+
+         Et à DROITE, avec les relais : à gauche la phrase s'adresse à celui qui
+         écrit, à droite se rangent les deux choses qu'on va voir quand on doute.
+         Collé derrière la phrase, le lien se lisait comme sa suite. Les relais
+         gardent le bord parce qu'ils sont le seul des deux qui change. -->
     <div class="col__foot">
       <Explain
         term="définitif"
@@ -73,6 +83,20 @@
       >
 
       <span class="col__spacer" />
+
+      <Hint text="le code de ce forum, libre et relisible (AGPL-3.0)" placement="top">
+        <a class="col__src" :href="sourceUrl" target="_blank" rel="noopener noreferrer">
+          <!-- La marque GitHub, à l'échelle du texte de pied : elle dit « du code
+               qui se lit » en un coup d'œil là où « voir les sources » demanderait
+               trois mots à 11 px. Le nom accessible est posé par `Hint`. -->
+          <svg class="col__src-mark" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+            <path
+              d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.05-.13-.36-.66.07-1.37 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.43.71.12 1.24.07 1.37.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A7.995 7.995 0 0 0 16 8c0-4.42-3.58-8-8-8Z"
+            />
+          </svg>
+          <span class="col__src-label">code source</span>
+        </a>
+      </Hint>
 
       <Explain term="relais" :body="relaysBody" :items="relaysList" placement="top">
         <span
@@ -111,6 +135,7 @@ import { topicIdFromParam } from '~/utils/permalink'
 const relays = useRelayStore()
 const topics = useTopicStore()
 const theme = useTheme()
+const sourceUrl = useRuntimeConfig().public.sourceUrl
 const route = useRoute()
 const router = useRouter()
 
@@ -287,6 +312,50 @@ const relaysList = computed(() => {
   border-top: 1px solid var(--line-soft);
   font-size: var(--fs-xs);
   color: var(--ink-4);
+}
+
+/* Encre de pied et pas de lien bleu : dans une ligne qu'on ne lit qu'en cas de
+   doute, un lien de couleur tirerait l'œil plus fort que le fil qu'on est venu
+   lire. Le survol suffit à le désigner comme cliquable. */
+.col__src {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  color: inherit;
+  white-space: nowrap;
+  text-decoration: none;
+}
+.col__src:hover {
+  color: var(--ink-2);
+  text-decoration: none;
+}
+.col__src-mark {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+}
+.col__src-label {
+  border-bottom: 1px solid transparent;
+}
+.col__src:hover .col__src-label {
+  border-bottom-color: var(--line-strong);
+}
+
+/* Sous 480 px la phrase « définitif » passerait à deux lignes si on lui prenait
+   davantage : la marque reste, le mot se retire de l'écran seulement.
+   Retiré et non `display: none` : c'est ce texte qui NOMME le lien, et
+   `Hint` ne pose son `aria-label` que sur un déclencheur sans contenu lisible
+   (voir `nameChild`) — masqué pour de bon, le lien n'aurait plus de nom du tout. */
+@media (max-width: 480px) {
+  .col__src-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
 }
 
 /* Repris de la barre de site : l'objet n'a pas changé, seulement sa place. Sans

@@ -771,6 +771,40 @@
             </p>
           </section>
 
+          <!-- ============================================== LE CODE OUVERT
+               En dernier chapitre, et pas en préambule : la page passe vingt
+               écrans à affirmer des propriétés (« personne ne peut effacer »,
+               « le relais ne peut pas falsifier »). Le seul moyen de ne pas
+               demander qu'on la croie est de dire où ça se vérifie — donc
+               après, quand le lecteur sait quoi aller lire. -->
+          <section id="code" class="ch" data-ch>
+            <p class="ch__eyebrow mono">AGPL-3.0</p>
+            <h2 class="ch__title display">Le code est ouvert</h2>
+            <p class="ch__lead">
+              Tout ce que cette page affirme se lit dans le code, et ce code est public. Rien ici ne
+              te demande de nous croire.
+            </p>
+            <p>
+              Le client dans lequel tu lis en ce moment, la règle qui décide ce que notre relais
+              accepte ou refuse, le programme qui classe les topics : les trois sont dans le même
+              dépôt, avec le raisonnement qui les a produits — les décisions, et les refus
+              argumentés. Ce que fait ta clé, où partent tes messages, ce qu’un modérateur peut et ne
+              peut pas : ça se vérifie, ligne par ligne.
+            </p>
+            <p>
+              La licence est la <strong>GNU AGPL-3.0</strong>, et elle a une conséquence qui te
+              concerne : quiconque héberge une version modifiée de Forome doit en publier les
+              sources. Le forum peut donc être copié, réhébergé, amélioré par n’importe qui — mais
+              pas refermé en silence. Un site qui te ferait les mêmes promesses avec le même code
+              devrait, lui aussi, te montrer ce qu’il en a changé.
+            </p>
+            <p>
+              <a :href="sourceUrl" target="_blank" rel="noopener noreferrer">Lire le code</a> — et
+              signaler ce qui ne va pas, ce qui est encore le moyen le plus direct de peser sur un
+              forum que personne ne possède.
+            </p>
+          </section>
+
           <!-- Ce que la page peut dire de la session en cours, en phrases : les
                mêmes faits en compteurs seraient de l'instrumentation. -->
           <section class="close">
@@ -827,6 +861,8 @@ usePageTitle('Comment ça marche')
 const relays = useRelayStore()
 const topics = useTopicStore()
 
+const sourceUrl = useRuntimeConfig().public.sourceUrl
+
 const PARTS = [
   // Les deux bornes ne sont pas numérotées : le décor et le bilan encadrent le
   // mécanisme, qui est la seule chose à suivre dans l'ordre.
@@ -865,7 +901,10 @@ const PARTS = [
   },
   {
     label: 'Pour finir',
-    items: [{ id: 'impossible', short: 'Ce qui reste impossible' }],
+    items: [
+      { id: 'impossible', short: 'Ce qui reste impossible' },
+      { id: 'code', short: 'Le code est ouvert' },
+    ],
   },
 ]
 

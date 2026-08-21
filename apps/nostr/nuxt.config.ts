@@ -171,6 +171,19 @@ export default defineNuxtConfig({
       siteUrl: '',
 
       /**
+       * Où trouver le code de CE client. Le lien existe dans l'interface (menu
+       * du compte, chapitre « Le code est ouvert ») et pas seulement dans le
+       * dépôt : sous AGPL, offrir ses sources à qui utilise l'app par le réseau
+       * fait partie de la licence, pas de la courtoisie.
+       *
+       * Donc configurable, et pas écrit en dur dans les composants : celui qui
+       * héberge une version modifiée doit pointer ici SES sources, sinon le lien
+       * renvoie à un code qui n'est pas celui qui tourne devant le lecteur.
+       * Surchargeable par `NUXT_PUBLIC_SOURCE_URL`.
+       */
+      sourceUrl: 'https://github.com/Ieandre/forome',
+
+      /**
        * Clé publique (hex) de l'indexeur dont on accepte le tick (spec §5.2).
        *
        * Vide par défaut, délibérément : sans clé épinglée, le client calcule son

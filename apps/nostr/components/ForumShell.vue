@@ -30,10 +30,6 @@
           >
             modérer
           </button>
-
-          <button type="button" class="btn btn--sm topic-head__perma" @click="copyPermalink">
-            {{ copied ? 'copié' : 'permalien' }}
-          </button>
         </div>
       </header>
 
@@ -152,7 +148,6 @@ const profiles = useProfileStore()
 const mod = useModerationStore()
 const reading = useReadingStore()
 const router = useRouter()
-const { copied, copy } = useCopy()
 const modPanel = ref(false)
 const replyTo = ref<NostrEvent | null>(null)
 /** Le nº du message visé dans ce fil, tel qu'il s'affichait au clic sur « Citer ». */
@@ -253,10 +248,6 @@ watch(
 
 function closeTopic(): void {
   void router.push('/')
-}
-
-function copyPermalink(): void {
-  void copy(window.location.href)
 }
 </script>
 
@@ -379,9 +370,6 @@ function copyPermalink(): void {
   height: 3px;
   border-radius: 50%;
   background: var(--ink-4);
-}
-.topic-head__perma {
-  flex-shrink: 0;
 }
 
 /* Bouton de modération du topic. Bleu comme les autres marqueurs d'équipe, et
@@ -554,8 +542,7 @@ function copyPermalink(): void {
  * badge), le nombre de messages se lit sur leur numérotation, le nombre de
  * kheys sert à choisir dans la liste, et « ça parle maintenant » se voit aux
  * réponses qui arrivent. Elle coûtait 40 des 93 px de la tête — dont deux
- * lignes au lieu d'une, parce que « retour » et « permalien » écrasent la
- * colonne du titre à 217 px.
+ * lignes au lieu d'une, parce que « retour » écrase la colonne du titre.
  */
 @media (max-width: 700px), (max-height: 560px) {
   .topic-head {

@@ -1,10 +1,10 @@
 /**
  * Smoke test du signeur distant NIP-46, de bout en bout.
  *
- * ## Ce qu'il prouve, et pourquoi c'est LE test de cette étape
+ * ## Ce qu'il prouve
  *
- * La spec (§3.2) affirme que NIP-46 restaure le modèle à deux étages de la v1 :
- * clé dans un seul endroit, autorisations révocables par client. Une
+ * La spec (§3.2) attend de NIP-46 un modèle à deux étages : clé dans un seul
+ * endroit, autorisations révocables par client. Une
  * implémentation qui signe mais dont on ne peut pas retirer l'accès ne vaut
  * rien — elle donnerait l'illusion d'avoir résolu la perte d'appareil.
  *

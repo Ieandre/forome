@@ -197,7 +197,7 @@ vers l'endroit où vivent les sauvegardes, donc une VM compromise ne l'est pas.
 En contrepartie, personne ne le lance à ta place — il n'y a pas de sauvegarde
 hors de la VM tant que cette commande n'a pas tourné.
 
-**Restaurer** (vérifié le 2026-08-21 sur une base jetable) :
+**Restaurer** — à répéter sur une base jetable avant d'en avoir besoin :
 
 ```bash
 sudo systemctl stop forome-strfry
@@ -234,7 +234,8 @@ un déploiement — au-delà de 48 h la ligne porte un ⚠️.
   Compiler strfry sur un runner à chaque push coûterait plus que ce qu'il
   rapporte tant qu'un seul relais est déployé.
 - **Aucune réplication.** Un seul relais reste un point de censure unique —
-  c'est un manque de l'architecture, pas du pipeline (voir le README). Les
+  c'est un manque de l'architecture, pas du pipeline (`strfry.md`, « Ce qui reste
+  ouvert »). Les
   sauvegardes ci-dessus ne la remplacent pas : elles rendent la veille, elles ne
   gardent pas le forum debout.
 - **L'indexeur n'est vérifié que par systemd.** Le client et le relais ont un

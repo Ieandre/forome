@@ -1,5 +1,5 @@
 /**
- * Identité locale (spec v2 §3.1, §3.2, §3.6).
+ * Identité locale (spec §3.1, §3.2, §3.6).
  *
  * Le modèle en une phrase : **la paire de clés EST le compte.** Pas de base
  * `users`, pas d'inscription, pas de session. La clé est générée à la première
@@ -7,7 +7,7 @@
  *
  * ⚠️ Ce que ce fichier ne peut pas faire, et qu'il ne faut pas croire acquis :
  *   - **pas de révocation.** Une clé compromise est une identité perdue (§3.2).
- *     NIP-46 est le seul vrai remède et il est reclassé en étape 4.
+ *     Le signeur distant (NIP-46) est le seul vrai remède.
  *   - **pas de rotation.** Nostr n'a pas de standard adopté pour « cette clé
  *     remplace celle-là » (§15.2). Ne pas inventer un mécanisme maison.
  *   - **le pseudo n'est pas unique** (§3.5). L'identité est la clé publique ;
@@ -234,13 +234,14 @@ export const useIdentityStore = defineStore('identity', () => {
   /* --------------------------------------------------- NIP-46 (bunker) */
 
   /**
-   * Signeur distant NIP-46 (spec v2 §3.2).
+   * Signeur distant NIP-46 (spec §3.2).
    *
    * **C'est la seule brique qui répond à la perte d'appareil.** Sans elle,
    * Nostr n'offre ni délégation ni révocation : un appareil perdu, c'est une clé
    * potentiellement compromise et une identité à abandonner. Avec un bunker, la
    * clé vit dans un seul endroit et ce client ne détient qu'une **autorisation**,
-   * que le bunker peut retirer — le modèle à deux étages de la v1, reconstruit.
+   * que le bunker peut retirer : la clé d'un côté, une autorisation révocable de
+   * l'autre.
    *
    * Ce qui voyage et ce qui ne voyage pas : la `clientSk` ci-dessous est une clé
    * locale qui ne sert **qu'à parler au bunker**. Elle n'est pas l'identité, et
@@ -420,7 +421,7 @@ export const useIdentityStore = defineStore('identity', () => {
   }
 
   /**
-   * Import d'une clé (spec v2 §3.3) — la moitié « appareil neuf » du QR.
+   * Import d'une clé (spec §3.3) — la moitié « appareil neuf » du QR.
    *
    * C'est bien la **clé elle-même** qui voyage, pas une autorisation : il n'y a
    * ni délégation ni révocation sur Nostr (§3.2). Donc importer une clé sur un

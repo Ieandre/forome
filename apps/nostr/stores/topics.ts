@@ -1,18 +1,18 @@
 /**
  * La liste de topics, calculée côté client.
  *
- * ⚠️ C'est ici que l'absence d'indexeur se paie (spec v2 §5.4). En v1, le tri
- * par vélocité était UN instantané calculé au centre et diffusé identique à
- * tout le monde. Sans indexeur, chaque client doit souscrire large et calculer
- * son propre classement sur ce qu'il a vu passer — donc :
+ * ⚠️ C'est ici que l'absence d'indexeur se paie (spec §5.4). Le tri par
+ * vélocité veut UN instantané calculé une fois et diffusé identique à tout le
+ * monde. Sans indexeur, chaque client doit souscrire large et calculer son
+ * propre classement sur ce qu'il a vu passer — donc :
  *
  *   - la vue est **partielle** : on classe ce qui est arrivé depuis l'ouverture
  *     de l'onglet, pas l'état réel du réseau
  *   - le coût est **par client**, pas amorti
  *
- * C'est exactement le piège décrit en §5.4, et c'est pourquoi l'étape 3 publie
- * le tick depuis l'indexeur. L'étape 1 assume la version pauvre : elle suffit à
- * valider l'UX du gel, qui est ce qu'on veut tester.
+ * C'est exactement le piège décrit en §5.4, et c'est pourquoi l'indexeur
+ * publie un tick signé. Ce calcul local est le repli : il suffit à faire vivre
+ * la liste quand aucun tick n'arrive, sans prétendre valoir l'instantané.
  */
 import { defineStore } from 'pinia'
 import { ref, computed, shallowRef } from 'vue'
@@ -38,7 +38,7 @@ import type { SubHandle } from '~/stores/relays'
 const WINDOW_S = 600 // fenêtre de vélocité (10 min)
 const RECENT_S = 120 // fenêtre courte (accélération)
 const MAX_STAMPS = 200 // borne mémoire par topic
-const TICK_MS = 2000 // cadence de recalcul — l'équivalent local du tick v1
+const TICK_MS = 2000 // cadence de recalcul — l'équivalent local du tick signé
 const MAX_TRACKED = 500
 
 /**
@@ -166,7 +166,7 @@ export const useTopicStore = defineStore('topics', () => {
   /* ------------------------------------------------------------ vélocité */
 
   /**
-   * Vélocité (spec v2 §5.3) : participants distincts + rythme + accélération.
+   * Vélocité (spec §5.3) : participants distincts + rythme + accélération.
    * **Elle ne décide plus l'ordre** (voir `compareTopicRows`) — elle n'alimente
    * que le rail de chauffe et « ça parle maintenant ».
    */
@@ -271,7 +271,7 @@ export const useTopicStore = defineStore('topics', () => {
   /* ------------------------------------------------- tick de l'indexeur */
 
   /**
-   * Souscription au tick (spec v2 §5.2). Sans `indexerPubkey` configurée, on
+   * Souscription au tick (spec §5.2). Sans `indexerPubkey` configurée, on
    * n'écoute rien : accepter le tick de n'importe qui donnerait à un inconnu le
    * pouvoir de décider l'ordre de l'écran principal.
    */

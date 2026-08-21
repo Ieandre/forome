@@ -1,10 +1,10 @@
 /**
- * Format des révisions (spec v2 §2.5).
+ * Format des révisions (spec §2.5).
  *
  * Sur Nostr, kinds 11 et 1111 ne sont pas remplaçables : rien n'écrase rien.
  * Corriger un message est donc **publier un nouvel event qui référence
- * l'ancien**, et l'historique existe qu'on le veuille ou non — c'est la
- * propriété que la v1 construisait à la main.
+ * l'ancien**, et l'historique existe qu'on le veuille ou non : ici c'est le
+ * protocole qui l'impose, pas une décision de produit.
  *
  * ## Le format
  *

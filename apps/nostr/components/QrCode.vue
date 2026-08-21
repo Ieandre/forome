@@ -5,7 +5,7 @@
 
 <script setup lang="ts">
 /**
- * QR généré côté client — porté tel quel depuis `apps/web` (paquet `qrcode`).
+ * QR généré côté client (paquet `qrcode`).
  *
  * ⚠️ Le contenu ne quitte jamais la page : ni requête réseau, ni service tiers.
  * C'est non négociable ici, puisque ce composant sert à afficher une `nsec`.

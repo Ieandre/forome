@@ -20,7 +20,7 @@
  * d'une seule route rendait « Nouveau topic » inerte : vue-router voyait la même
  * destination et refusait la navigation (voir `nuxt.config.ts` pour le détail).
  *
- * Permalien (spec v2 §7.1) : le state du panneau droit est dans l'URL, donc un
+ * Permalien (spec §7.1) : le state du panneau droit est dans l'URL, donc un
  * lien partagé ouvre les deux panneaux au bon endroit. L'URL porte le titre en
  * slug devant l'id hex (`utils/permalink.ts`), mais seul l'id compte à la
  * lecture — un lien nu `/t/<id>`, émis quand le titre n'est pas encore connu,

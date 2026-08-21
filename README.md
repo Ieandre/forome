@@ -1,140 +1,124 @@
 # Forome
 
-Forum généraliste à haut débit, culture 18-25 : **tu lis en 2 secondes, tu
-postes sans compte, et rien ne peut être retiré du réseau.**
+Forum généraliste à haut débit : **tu lis en 2 secondes, tu postes sans compte,
+et rien ne peut être retiré du réseau.**
 
-Le forum tourne sur **Nostr** : relais indépendants, identité par paire de clés
-générée à la première visite (aucune inscription), MP chiffrés de bout en bout
-(NIP-17), anti-spam par preuve de travail (NIP-13). Pas de base de données, pas
-de serveur applicatif — le client parle directement aux relais. La conception
-complète (décisions, refus argumentés, zones ouvertes, roadmap) est dans
-[`projet-forum-specification.md`](projet-forum-specification.md).
+Forome n'a pas de base de données, pas de comptes, pas de serveur applicatif au
+milieu. Le client parle directement à des **relais Nostr indépendants** : il y
+lit les messages et y publie les tiens, signés par une clé qui n'existe que dans
+ton navigateur. Il n'y a rien à administrer qui puisse décider, un jour, de ce
+que le forum a le droit de contenir.
 
-## Essayer
+## Pourquoi ça change quelque chose
+
+Sur un forum classique, un message vit à un seul endroit — la base de données de
+celui qui l'héberge. Il peut être modifié, retiré, ou disparaître avec le
+serveur, et personne n'a de recours. Ici, un message est un **event signé** :
+
+- **Tu le signes, pas nous.** Ton identité est une paire de clés générée à la
+  première visite, sans inscription. La clé privée ne quitte pas l'appareil, et
+  la même identité fonctionne dans n'importe quel autre client Nostr.
+- **Il part sur plusieurs relais qui ne se connaissent pas.** Chacun en garde sa
+  copie. Faire taire un message demanderait de convaincre tous les relais du
+  réseau, simultanément et pour toujours — y compris ceux qui n'existent pas
+  encore.
+- **Personne ne peut le falsifier.** La signature est vérifiée à la réception :
+  un relais peut refuser de servir un message, jamais en fabriquer un ou en
+  changer le contenu.
+- **La modération filtre, elle ne supprime pas.** Un modérateur retire un
+  message de *ce* forum ; il ne le retire pas du réseau. La distinction est
+  assumée et affichée à l'utilisateur, plutôt que promise à l'envers.
+
+Ce que ça coûte, et qui est documenté plutôt que caché :
+
+- **Publier est définitif.** Il n'y a pas de suppression garantie, seulement une
+  demande de suppression que chaque relais honore ou non.
+- **Pas d'ordre total.** L'heure d'un message est déclarée par son auteur ; le
+  fil affiche l'ordre d'arrivée et ne le réécrit jamais.
+- **Les pseudos ne sont pas uniques.** L'identité est la clé publique, donc tout
+  pseudo affiché porte son discriminant de clé.
+- **Pas de révocation de clé.** Une clé compromise est une identité perdue. Le
+  remède est un signeur distant (NIP-46), où la clé reste ailleurs et le client
+  ne détient qu'une autorisation révocable.
+
+Le raisonnement complet — les décisions, les refus argumentés, les questions
+encore ouvertes — est dans [`docs/conception.md`](docs/conception.md).
+
+## Démarrer
 
 ```bash
 npm install
 npm run dev:nostr      # http://localhost:3002 — Node ≥ 22, aucun autre prérequis
 ```
 
-Le client fonctionne seul : il génère une identité locale et lit les relais.
-Pour **publier**, il faut un relais local (voir [la pile de dev](#la-pile-locale-complète-sans-toucher-au-réseau-public)) :
-en développement, l'écriture est verrouillée sur la machine, parce que sur
-Nostr écrire est **irréversible** — un event parti sur un relais public n'en
-sort plus.
+Le client démarre seul et génère une identité locale. En développement il ne
+parle qu'au **relais local**, en lecture comme en écriture : sans lui, la liste
+reste vide (voir [la pile locale](#la-pile-locale)).
+
+En développement, l'écriture est **verrouillée sur la machine** : le client
+refuse tout relais tiers, parce qu'un essai parti sur un relais public n'en
+revient pas. `?public=1` lève le verrou, sciemment, le temps d'une session.
 
 ```bash
-npm run build          # build de production du client
 npm test               # policy, indexeur, client
 npm run typecheck
+npm run build          # build de production du client
 ```
 
 Ces trois-là, plus `smoke:policy`, tournent sur chaque pull request ; un push sur
-`main` qui les passe est déployé tout seul ([`docs/deploiement.md`](docs/deploiement.md)).
+`main` qui les passe est déployé automatiquement
+([`docs/deploiement.md`](docs/deploiement.md)).
 
 ## Le dépôt
 
 | | |
 |---|---|
-| [`apps/nostr`](apps/nostr) | **le client** (Nuxt, SPA). Lit les relais, publie avec PoW, consomme le tick de l'indexeur, suit/bloque (kind 3, kind 10000), mentionne (`nostr:npub…` NIP-27 + tag `p`), MP chiffrés NIP-17, signature par signeur distant révocable (NIP-46) |
-| [`apps/indexer`](apps/indexer) | **le tick signé** : vélocité, détection de raid, publié comme event Nostr (kind 30078) |
-| [`packages/relay-policy`](packages/relay-policy) | **la policy d'écriture**, partagée par le plugin strfry, le relais de dev et l'indexeur. La seule barrière du système, donc la plus testée du dépôt (policy, modération, révisions) |
+| [`apps/nostr`](apps/nostr) | **le client** (Nuxt, SPA). Lit les relais, publie avec preuve de travail, suit et bloque (kind 3, kind 10000), mentionne (`nostr:npub…`), MP chiffrés de bout en bout (NIP-17), signeur distant révocable (NIP-46) |
+| [`apps/indexer`](apps/indexer) | **le tick signé** : vélocité des topics et détection de raid, publiés comme event Nostr (kind 30078) plutôt que calculés par chaque client |
+| [`packages/relay-policy`](packages/relay-policy) | **la policy d'écriture**, partagée par le plugin strfry, le relais de dev et l'indexeur. La seule barrière du système, donc la plus testée du dépôt |
 | [`scripts/`](scripts) | relais de dev, seed, bunker NIP-46, mise en place de la modération, smokes bout en bout |
-| [`docs/`](docs) | les documents ci-dessous |
+| [`docs/`](docs) | conception, relais, déploiement, modération, SEO |
 
-## Où en est le projet
-
-**Fait, et vérifié en local** : le client complet, l'indexeur, la policy — et
-**strfry lui-même**, compilé et lancé avec la vraie policy à travers le vrai
-protocole de plugin (`npm run smoke:strfry`, [`docs/strfry.md`](docs/strfry.md)).
-
-**Pas fait** :
-
-- **aucun relais à nous n'est déployé.** Tant que `homeRelay` est vide, le
-  client lit les relais publics en repli — le forum affiche ce qui existe,
-  mais aucune de nos règles ne s'applique nulle part.
-- **la réplication.** Il faut **au moins deux** relais avec `strfry sync` :
-  un relais unique ridiculiserait la promesse d'incensurabilité.
-- **NIP-42 (AUTH)** : les quotas sont par clé, mais rien ne prouve qu'une
-  connexion appartient à la clé qu'elle revendique.
-
-⚠️ **Le forum n'a pas été lancé sur le réseau public.** Un seul event y est
-parti — par accident, le 15 août 2026, depuis un serveur de dev — et c'est ce
-qui a conduit à verrouiller l'écriture : en développement, le client refuse
-tout relais tiers (`?public=1` pour passer outre, sciemment, le temps d'une
-session). Voir [`apps/nostr/utils/relayTargets.ts`](apps/nostr/utils/relayTargets.ts).
-
-## Les documents
-
-| Document | Rôle |
-|---|---|
-| [`projet-forum-specification.md`](projet-forum-specification.md) | **la spec** — la direction. Conception, décisions négatives, zones ouvertes, roadmap V1→V4 |
-| [`docs/moderation-staff.md`](docs/moderation-staff.md) | **modération outillée** : équipe, pouvoirs, panneau d'administration. Complète le §9 de la spec, qui s'arrête aux contrôles côté lecteur |
-| [`docs/strfry.md`](docs/strfry.md) | **le relais** : compiler strfry (dont le patch Apple Clang), le lancer, le vérifier ; qui lit où et qui écrit où, et pourquoi |
-| [`docs/deploiement.md`](docs/deploiement.md) | **la mise en production** : le pipeline CI/CD, les secrets à brancher, la santé d'un déploiement, le retour arrière |
-| [`docs/seo.md`](docs/seo.md) | ce qu'un moteur de recherche voit d'une SPA branchée sur des relais, et le dispositif `<head>` + sitemap qui répare ça sans SSR |
-| [`docs/migration-nostr.md`](docs/migration-nostr.md) | document d'époque : l'inventaire du code v1 au moment du portage, ce qui a survécu, ce qui a été jeté |
-
-## D'où ça vient : le pivot v1 → v2
-
-La v1 était un protocole maison, client-serveur. Elle a été supprimée du dépôt
-le 13 août 2026 une fois le portage vers Nostr terminé ; ce qui en a survécu
-vit dans `apps/indexer` (hotlist, raid) et `apps/nostr` (composants, QR).
-
-| | v1 (supprimée) | v2 (le dépôt) |
-|---|---|---|
-| Format | CBOR déterministe maison | event JSON NIP-01 |
-| Signature | Ed25519 + X25519 | secp256k1 / Schnorr |
-| Identité | clé de compte + clés d'appareil révocables | une clé, transportée par QR |
-| Ordre | `seq` serveur, ordre total | `created_at` déclaré par l'auteur |
-| Retrait | pierre tombale signée + purge des octets | impossible au-delà de son propre relais |
-| Inscription | clés + coffre + kit de secours | aucune — identité générée à la première visite |
-
-Les pertes (ordre total, horloge fiable, révocation de clé, unicité des pseudos,
-retrait dur) sont documentées et argumentées dans la spec — §2.4, §3.2, §3.5,
-§6.4, §9.2, §10.2. C'est la partie utile du document.
-
-## `apps/nostr` — le client
+## Comment le client est fait
 
 ```
 stores/relays.ts      pool multi-relais, dédoublonnage par id, vérification de
                       signature, publication rapportée relais par relais
 stores/topics.ts      tick de l'indexeur, avec repli sur un calcul local
 stores/profiles.ts    kind 0 groupés et cachés + vérification NIP-05 réelle
-stores/identity.ts    clé secp256k1 locale, new khey, NIP-07, signeur NIP-46
+stores/identity.ts    clé secp256k1 locale, identité jetable, NIP-07, NIP-46
 stores/social.ts      follows kind 3, mute kind 10000, web of trust
 stores/moderation.ts  roster signé par la clé racine, décisions des modérateurs,
                       file de signalements NIP-56 triée par voix distinctes
-stores/dms.ts         MP NIP-17 : rumeur → sceau → emballage avec PoW
+stores/dms.ts         MP NIP-17 : rumeur → sceau → emballage, avec PoW
 stores/notifications.ts / reading.ts
                       réponses reçues, position de lecture
-packages/relay-policy/src/revisions.ts
-                      format des corrections (§2.5) : un event de plus, jamais
-                      un remplacement — partagé client / relais / indexeur
-                      (`npm run smoke:edit` vérifie le trajet bout en bout)
 workers/pow.worker.ts minage NIP-13, deux modes : horodatage libre ou figé
-composables/          usePowMiner (singleton, minage spéculatif), usePublisher
-components/           TopicList (gel + pilule +N), PostFeed (accrochage, tampon,
-                      ambiance, cap DOM), PostItem (codes forum, nº local),
-                      Composer (encart + nudge), RichEditor (frappe stylisée,
+composables/          usePowMiner (minage spéculatif pendant la frappe),
+                      usePublisher
+components/           TopicList (liste gelée pendant la lecture), PostFeed
+                      (accrochage bas de fil, tampon de débit, cap DOM),
+                      PostItem, Composer, RichEditor (frappe stylisée,
                       complétion `@…`), PostEditor (correction d'un message
                       publié), DevicePairing (QR + bunker)
 utils/mentions.ts     mentions : `nostr:npub…` dans le texte, tag `p` dérivé de
                       l'arbre analysé — donc jamais de notification sans mention
                       visible en face
-pages/                / , /t/[id] (vue 30/70) et /new — trois routes, un seul
-                      écran ; /dm, /profil, /appareils, /admin, /moderation,
-                      /comment-ca-marche (la doc du mécanisme : clés, event
-                      signé, relais, PoW, MP — schémas et démos calculées)
+pages/                / , /t/[id] (vue 30/70) et /new ; /dm, /profil,
+                      /appareils, /admin, /moderation, et /comment-ca-marche,
+                      qui explique le mécanisme à l'utilisateur (clés, event
+                      signé, relais, PoW, MP) avec schémas et démos calculées
 ```
 
-L'en-tête passe en orange quand les relais sont surchargés, et le pied de la
-liste indique si le tri vient de l'indexeur ou d'un calcul local.
+Les corrections de message ([`packages/relay-policy/src/revisions.ts`](packages/relay-policy/src/revisions.ts))
+sont un event **de plus**, jamais un remplacement : le format est partagé par le
+client, le relais et l'indexeur, et `npm run smoke:edit` en vérifie le trajet
+complet.
 
-## La pile locale complète, sans toucher au réseau public
+## La pile locale
 
-Deux relais de dev, complémentaires ([`docs/strfry.md`](docs/strfry.md) les
-compare) :
+Deux relais de dev, complémentaires
+([`docs/strfry.md`](docs/strfry.md) les compare) :
 
 ```bash
 npm run dev:strfry     # :7778 — le VRAI strfry, policy via le protocole de
@@ -144,7 +128,7 @@ npm run dev:relay      # :7447 — relais Node en mémoire, policy appelée en
                        #         direct ; l'outil des tests reproductibles
 ```
 
-En développement, le client vise `ws://localhost:7778` par défaut — ouvrir
+En développement le client vise `ws://localhost:7778` par défaut — ouvrir
 `http://localhost:3002/` suffit. Pour viser le relais Node :
 `?relays=ws://localhost:7447`.
 
@@ -182,9 +166,9 @@ npm run dev:relay             # relancer : les deux lisent le même .env
 npm run dev:nostr
 ```
 
-« Modération » apparaît alors dans ton menu. **Tout le reste se fait au clic** :
-nommer des modérateurs (onglet *Équipe*), masquer, bannir, verrouiller, épingler.
-`/moderation` montre au public qui modère et ce qui a été décidé.
+« Modération » apparaît alors dans le menu. **Tout le reste se fait au clic** :
+nommer des modérateurs, masquer, bannir, verrouiller, épingler. `/moderation`
+montre au public qui modère et ce qui a été décidé.
 
 Pourquoi une commande et pas un bouton : le client et le relais sont deux
 programmes qui ne se parlent pas, et ils doivent connaître la même clé racine —
@@ -193,26 +177,34 @@ que les deux lisent. Et si l'interface pouvait nommer un administrateur pour tou
 le monde, n'importe qui cliquerait dessus : cette clé épinglée *est* la
 protection du forum, pas un réglage.
 
-⚠️ En production, la clé racine n'est **pas** ton identité de tous les jours :
+⚠️ En production, la clé racine n'est **pas** une identité de tous les jours :
 `npm run setup:moderation -- --dediee` en génère une séparée, à garder hors du
 navigateur (bunker NIP-46) — Nostr ne permet aucune révocation.
 
-## Prochaine étape
+## Les documents
 
-Deux choses, dans cet ordre :
+| Document | Rôle |
+|---|---|
+| [`docs/conception.md`](docs/conception.md) | **la conception** : le protocole tel qu'on s'en sert, les décisions et leurs raisons, les refus argumentés, les questions ouvertes |
+| [`docs/strfry.md`](docs/strfry.md) | **le relais** : compiler strfry, le lancer, le vérifier ; qui lit où, qui écrit où, et pourquoi |
+| [`docs/deploiement.md`](docs/deploiement.md) | **la mise en production** : le pipeline, les secrets, la santé d'un déploiement, le retour arrière |
+| [`docs/moderation-staff.md`](docs/moderation-staff.md) | **la modération outillée** : équipe, pouvoirs, panneau d'administration |
+| [`docs/seo.md`](docs/seo.md) | ce qu'un moteur de recherche voit d'une SPA branchée sur des relais, et le dispositif qui répare ça sans SSR |
 
-**1. Déployer notre relais — au moins deux.** strfry compile, tourne et
-applique la policy en local ; il reste à l'installer quelque part, à remplir
-`homeRelay`, et à en synchroniser un deuxième (`strfry sync`) pour que
-l'incensurabilité cesse d'être théorique.
+## Contribuer
 
-**2. Décider de lancer pour de vrai.** Tout est vérifié en local, mais le
-premier envoi public ne se rattrape pas. C'est un choix à faire, pas une case à
-cocher.
+Les commentaires du code portent les *pourquoi* : un fichier explique la
+décision et le piège qu'une modification innocente ferait revenir. C'est la
+première chose à lire avant de toucher à un module, et la convention à tenir en
+en ajoutant.
 
-Restent en suspens : **NIP-42** (prouver qu'une connexion possède la clé
-qu'elle revendique, le jour où les quotas affrontent un adversaire et pas
-seulement du bruit), le **mode ambiance** et le **cap DOM** (jamais atteints
-faute de débit), et un point de conception à trancher : bloquer quelqu'un est
-actuellement **public** (NIP-51 permettrait de chiffrer la liste), ce qui est
-en soi une information.
+Deux règles qui ne se négocient pas, parce qu'elles protègent des utilisateurs
+et pas du code :
+
+1. **Rien ne part sur le réseau public depuis un environnement de
+   développement.** Le verrou est dans
+   [`apps/nostr/utils/relayTargets.ts`](apps/nostr/utils/relayTargets.ts).
+2. **La policy d'écriture a une seule implémentation**
+   ([`packages/relay-policy`](packages/relay-policy)), partagée par le relais,
+   le relais de dev et l'indexeur. Deux copies d'une règle de sécurité finissent
+   toujours par diverger.

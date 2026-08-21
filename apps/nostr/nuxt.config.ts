@@ -5,9 +5,9 @@ export default defineNuxtConfig({
 
   modules: ['@pinia/nuxt'],
 
-  // SPA assumé pour les étapes 1–2 de la migration (spec v2 §15.1) : en v2 le
-  // SSR ne peut rendre que depuis l'indexeur, et l'indexeur n'existe qu'à
-  // l'étape 3. Rester sur Nuxt garde l'option SSR ouverte sans réécriture.
+  // SPA assumé (spec §15.1) : un rendu serveur ne pourrait s'appuyer que sur
+  // l'indexeur, jamais sur les relais directement. Rester sur Nuxt garde
+  // l'option SSR ouverte sans réécriture.
   ssr: false,
 
   devServer: { port: 3002 },
@@ -156,7 +156,7 @@ export default defineNuxtConfig({
       siteUrl: '',
 
       /**
-       * Clé publique (hex) de l'indexeur dont on accepte le tick (spec v2 §5.2).
+       * Clé publique (hex) de l'indexeur dont on accepte le tick (spec §5.2).
        *
        * Vide par défaut, délibérément : sans clé épinglée, le client calcule son
        * classement localement plutôt que d'accepter celui du premier venu.
@@ -203,14 +203,13 @@ export default defineNuxtConfig({
        *
        * Ce n'est pas du confort, c'est le garde-fou principal : sur Nostr écrire
        * est définitif, et un essai de développement n'a rien à faire sur le
-       * réseau. Le défaut visait les relais publics jusqu'au 2026-08-15, hérité
-       * de l'étape 1 où le client ne faisait que lire — un « test » est parti
-       * sur quatre relais publics avant qu'on le remarque.
+       * réseau. Viser les relais publics par défaut suffit à envoyer un
+       * « test » sur des relais tiers sans que personne le remarque.
        */
       devRelay: 'ws://localhost:7778',
 
       /**
-       * Relais publics — étape 1 : on ne possède rien, on lit ce qui existe.
+       * Relais publics : la réplication et la portabilité de ce qu'on écrit.
        *
        * Liste **mesurée**, pas choisie de mémoire : `npm run check:relays`
        * teste la connexion, la lecture et le document NIP-11 de chacun. Deux

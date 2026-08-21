@@ -1,5 +1,5 @@
 /**
- * L'indexeur (spec v2 §5.2, §5.4).
+ * L'indexeur (spec §5.2, §5.4).
  *
  * ## Pourquoi il existe
  *
@@ -11,7 +11,7 @@
  *
  * Réponse retenue : l'indexeur **publie le tick comme un event Nostr**
  * remplaçable et signé. Les clients souscrivent à un seul event et reçoivent
- * tous les mêmes octets. L'insight de la v1 est préservé, et il devient
+ * tous les mêmes octets. Le tri reste calculé une fois pour tous, et il devient
  * *vérifiable* : le tick est signé, donc attribuable.
  *
  * ## Ce que ça concède, et qu'il faut dire
@@ -181,7 +181,7 @@ function onComment(ev: Event): void {
 }
 
 /**
- * Ingère une liste de contacts (spec v2 §12.3). Sert **uniquement** à la
+ * Ingère une liste de contacts (spec §12.3). Sert **uniquement** à la
  * détection de raid : une clé suivie par quelqu'un cesse d'être traitée comme
  * fraîche. L'indexeur ne construit pas de score de réputation et n'utilise pas
  * ce graphe pour classer — le tri reste la vélocité, point.

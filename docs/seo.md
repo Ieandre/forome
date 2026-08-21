@@ -48,8 +48,8 @@ le plugin ne touche à rien qu'il ne connaît pas.
 ## Limites connues (assumées)
 
 - **Le corps des topics reste rendu client.** Un crawler voit le titre,
-  l'amorce et le `<noscript>`, pas le fil complet. L'étape au-dessus serait le
-  SSR depuis l'indexeur (spec v2 §15.1) — décision séparée.
+  l'amorce et le `<noscript>`, pas le fil complet. Le cran au-dessus serait le
+  SSR depuis l'indexeur (conception §15.1) — décision séparée.
 - **Pas d'`og:image`** : il faudrait une image 1200×630 dédiée dans
   `public/` ; les aperçus retombent sur le titre + description (`twitter:card
   summary`).
@@ -67,6 +67,7 @@ curl -s http://localhost:3002/robots.txt
 NUXT_PUBLIC_SITE_URL=http://localhost:3002 … curl -s http://localhost:3002/sitemap.xml
 ```
 
-Vérifié le 2026-08-16 sur le build de production (`nuxt build` +
-`node .output/server/index.mjs`) : le hook `render:html` s'exécute bien à
-chaque requête malgré `ssr: false`, en dev comme en prod.
+À vérifier sur le build de production (`nuxt build` +
+`node .output/server/index.mjs`) autant qu'en dev : le hook `render:html`
+s'exécute à chaque requête malgré `ssr: false`, et c'est là-dessus que tout le
+dispositif repose.

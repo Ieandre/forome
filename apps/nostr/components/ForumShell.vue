@@ -1,149 +1,143 @@
 <template>
-  <div class="shell" :class="{ 'shell--topic-open': !!openTopicId || newTopic }">
-    <aside class="shell__list">
-      <TopicList :open-topic-id="openTopicId" :new-topic="newTopic" />
-    </aside>
+  <section class="shell__topic">
+    <NewTopicPanel v-if="newTopic" />
 
-    <section class="shell__topic">
-      <NewTopicPanel v-if="newTopic" />
-
-      <template v-else-if="openTopicId">
-        <header class="topic-head">
-          <div class="topic-head__col">
-            <Hint text="retour à la liste" placement="bottom">
-              <button type="button" class="topic-head__back" @click="closeTopic">
-                <span aria-hidden="true">←</span>
-                <span class="visually-hidden">retour à la liste</span>
-              </button>
-            </Hint>
-
-            <UserAvatar v-if="rootAuthor" :pubkey="rootAuthor" :size="26" class="topic-head__av" />
-
-            <div class="topic-head__main">
-              <h1 class="topic-head__title">{{ title }}</h1>
-              <div class="topic-head__meta">
-                <span v-if="rootAuthor" class="topic-head__by">
-                  par <strong>{{ profiles.displayName(rootAuthor) }}</strong>
-                </span>
-                <span v-if="row" class="topic-head__stat mono">{{ row.replies }} msg</span>
-                <span v-if="row && row.people > 0" class="topic-head__stat mono">{{ row.people }} kheys</span>
-                <span v-if="row && row.vel > 6" class="tag tag--brand topic-head__hot">ça parle maintenant</span>
-              </div>
-            </div>
-
-            <button
-              v-if="mod.amStaff"
-              type="button"
-              class="btn btn--sm topic-head__mod"
-              :class="{ 'topic-head__mod--on': modPanel }"
-              @click="modPanel = !modPanel"
-            >
-              modérer
+    <template v-else-if="openTopicId">
+      <header class="topic-head">
+        <div class="topic-head__col">
+          <Hint text="retour à la liste" placement="bottom">
+            <button type="button" class="topic-head__back" @click="closeTopic">
+              <span aria-hidden="true">←</span>
+              <span class="visually-hidden">retour à la liste</span>
             </button>
+          </Hint>
 
-            <button type="button" class="btn btn--sm topic-head__perma" @click="copyPermalink">
-              {{ copied ? 'copié' : 'permalien' }}
-            </button>
-          </div>
-        </header>
+          <UserAvatar v-if="rootAuthor" :pubkey="rootAuthor" :size="26" class="topic-head__av" />
 
-        <TopicModeration v-if="modPanel && openTopicId" :topic-id="openTopicId" @close="modPanel = false" />
-
-        <PostFeed ref="feedEl" :topic-id="openTopicId" @reply="replyTo = $event" />
-
-        <!-- Le flux global est un mode de test de débit, pas un topic : on n'y
-             publie pas (il n'a pas de racine à laquelle rattacher une réponse). -->
-        <!-- Topic verrouillé : le composeur disparaît, mais le fil reste lisible
-             et le motif est affiché. Fermer sans dire pourquoi serait la censure
-             silencieuse que le §9.2 refuse. -->
-        <footer v-if="lockNotice" class="topic-foot">
-          <span class="tag">verrouillé</span>
-          <span class="topic-foot__note">
-            {{ lockNotice.reason }} — décision de {{ profiles.displayName(lockNotice.by) }}. Le fil
-            reste lisible ; nos relais n'acceptent plus de réponse.
-          </span>
-        </footer>
-
-        <Composer
-          v-else-if="openTopicId !== FIREHOSE_TOPIC_ID"
-          :root-id="openTopicId"
-          :root="root"
-          :reply-to="replyTo"
-          :participants="feedEl?.participants ?? []"
-          @posted="onPosted"
-          @settled="onPostSettled"
-          @cancel-reply="replyTo = null"
-        />
-        <footer v-else class="topic-foot">
-          <span class="tag tag--warn">démo débit</span>
-          <span class="topic-foot__note">
-            Flux global <code>kind 1</code> : sert à stresser le fil, pas à publier.
-          </span>
-        </footer>
-      </template>
-
-      <!-- Le forum se présente dans l'anatomie d'un message, mais sans carte ni
-           ombre : ça doit se lire comme la tête du fil, jamais comme un vrai
-           message reçu des relais. -->
-      <div v-else class="shell__welcome">
-        <article class="wel">
-          <span class="wel__rail" aria-hidden="true" />
-
-          <p class="wel__brand">Forome<span class="wel__brand-dot">.</span></p>
-
-          <!-- Aucun état d'attente ici : la colonne de gauche porte déjà le
-               squelette, les relais injoignables et le forum vide. Ce texte ne
-               dépend d'aucune donnée, donc il s'affiche dès le premier rendu.
-
-               Il ne décrit PAS l'écran. La version précédente expliquait la mise
-               en page — la liste est à gauche, le topic s'ouvre ici, sans
-               recharger — c'est-à-dire la plomberie d'une SPA, que deux secondes
-               d'usage apprennent mieux qu'un paragraphe. C'est la seule surface
-               où le forum peut dire ce qu'il EST avant qu'on ait cliqué : elle
-               porte donc les trois propriétés, chacune avec le mécanisme qui la
-               rend vraie, parce qu'une propriété sans son mécanisme est un
-               slogan. Rien de l'ancien texte n'est repris : l'ordre de la liste
-               se voit dans la liste. -->
-          <div class="wel__body">
-            <h2 class="wel__title display">Ce que tu écris ici, personne ne peut le retirer.</h2>
-            <p class="wel__lead">
-              Il n'y a pas de serveur qui nous appartienne. Ton message est signé par ta clé, puis
-              recopié sur des relais indépendants qui en gardent chacun leur copie : nous pouvons
-              cesser d'en servir un, le faire disparaître du réseau, non.
-            </p>
-            <p class="wel__lead">
-              Il n'y a pas de compte non plus. Ton navigateur t'a fabriqué une clé en arrivant — elle
-              est ton identité, ici comme dans n'importe quel autre client Nostr. Ni mot de passe, ni
-              adresse à donner : tu peux répondre tout de suite.
-            </p>
-            <!-- Conditionnée comme dans `UserMenu` : sans clé racine épinglée, ce
-                 client n'applique la décision de personne, et il n'y a donc aucune
-                 modération dont annoncer la transparence. -->
-            <p v-if="mod.configured" class="wel__lead">
-              Et ce qu'on masque, on le dit : chaque décision de modération est un message signé,
-              avec son motif, que tout le monde peut relire.
-            </p>
-            <div class="wel__actions">
-              <NuxtLink to="/new" class="btn btn--primary">Nouveau topic</NuxtLink>
-              <NuxtLink to="/comment-ca-marche" class="wel__more">Comment ça marche</NuxtLink>
-              <NuxtLink v-if="mod.configured" to="/moderation" class="wel__more">Qui modère ici</NuxtLink>
+          <div class="topic-head__main">
+            <h1 class="topic-head__title">{{ title }}</h1>
+            <div class="topic-head__meta">
+              <span v-if="rootAuthor" class="topic-head__by">
+                par <strong>{{ profiles.displayName(rootAuthor) }}</strong>
+              </span>
+              <span v-if="row" class="topic-head__stat mono">{{ row.replies }} msg</span>
+              <span v-if="row && row.people > 0" class="topic-head__stat mono">{{ row.people }} kheys</span>
+              <span v-if="row && row.vel > 6" class="tag tag--brand topic-head__hot">ça parle maintenant</span>
             </div>
           </div>
-        </article>
-      </div>
-    </section>
-  </div>
+
+          <button
+            v-if="mod.amStaff"
+            type="button"
+            class="btn btn--sm topic-head__mod"
+            :class="{ 'topic-head__mod--on': modPanel }"
+            @click="modPanel = !modPanel"
+          >
+            modérer
+          </button>
+
+          <button type="button" class="btn btn--sm topic-head__perma" @click="copyPermalink">
+            {{ copied ? 'copié' : 'permalien' }}
+          </button>
+        </div>
+      </header>
+
+      <TopicModeration v-if="modPanel && openTopicId" :topic-id="openTopicId" @close="modPanel = false" />
+
+      <PostFeed ref="feedEl" :topic-id="openTopicId" @reply="replyTo = $event" />
+
+      <!-- Le flux global est un mode de test de débit, pas un topic : on n'y
+           publie pas (il n'a pas de racine à laquelle rattacher une réponse). -->
+      <!-- Topic verrouillé : le composeur disparaît, mais le fil reste lisible
+           et le motif est affiché. Fermer sans dire pourquoi serait la censure
+           silencieuse que le §9.2 refuse. -->
+      <footer v-if="lockNotice" class="topic-foot">
+        <span class="tag">verrouillé</span>
+        <span class="topic-foot__note">
+          {{ lockNotice.reason }} — décision de {{ profiles.displayName(lockNotice.by) }}. Le fil
+          reste lisible ; nos relais n'acceptent plus de réponse.
+        </span>
+      </footer>
+
+      <Composer
+        v-else-if="openTopicId !== FIREHOSE_TOPIC_ID"
+        :root-id="openTopicId"
+        :root="root"
+        :reply-to="replyTo"
+        :participants="feedEl?.participants ?? []"
+        @posted="onPosted"
+        @settled="onPostSettled"
+        @cancel-reply="replyTo = null"
+      />
+      <footer v-else class="topic-foot">
+        <span class="tag tag--warn">démo débit</span>
+        <span class="topic-foot__note">
+          Flux global <code>kind 1</code> : sert à stresser le fil, pas à publier.
+        </span>
+      </footer>
+    </template>
+
+    <!-- Le forum se présente dans l'anatomie d'un message, mais sans carte ni
+         ombre : ça doit se lire comme la tête du fil, jamais comme un vrai
+         message reçu des relais. -->
+    <div v-else class="shell__welcome">
+      <article class="wel">
+        <span class="wel__rail" aria-hidden="true" />
+
+        <p class="wel__brand">Forome<span class="wel__brand-dot">.</span></p>
+
+        <!-- Aucun état d'attente ici : la colonne de gauche porte déjà le
+             squelette, les relais injoignables et le forum vide. Ce texte ne
+             dépend d'aucune donnée, donc il s'affiche dès le premier rendu.
+
+             Il ne décrit PAS l'écran. La version précédente expliquait la mise
+             en page — la liste est à gauche, le topic s'ouvre ici, sans
+             recharger — c'est-à-dire la plomberie d'une SPA, que deux secondes
+             d'usage apprennent mieux qu'un paragraphe. C'est la seule surface
+             où le forum peut dire ce qu'il EST avant qu'on ait cliqué : elle
+             porte donc les trois propriétés, chacune avec le mécanisme qui la
+             rend vraie, parce qu'une propriété sans son mécanisme est un
+             slogan. Rien de l'ancien texte n'est repris : l'ordre de la liste
+             se voit dans la liste. -->
+        <div class="wel__body">
+          <h2 class="wel__title display">Ce que tu écris ici, personne ne peut le retirer.</h2>
+          <p class="wel__lead">
+            Il n'y a pas de serveur qui nous appartienne. Ton message est signé par ta clé, puis
+            recopié sur des relais indépendants qui en gardent chacun leur copie : nous pouvons
+            cesser d'en servir un, le faire disparaître du réseau, non.
+          </p>
+          <p class="wel__lead">
+            Il n'y a pas de compte non plus. Ton navigateur t'a fabriqué une clé en arrivant — elle
+            est ton identité, ici comme dans n'importe quel autre client Nostr. Ni mot de passe, ni
+            adresse à donner : tu peux répondre tout de suite.
+          </p>
+          <!-- Conditionnée comme dans `UserMenu` : sans clé racine épinglée, ce
+               client n'applique la décision de personne, et il n'y a donc aucune
+               modération dont annoncer la transparence. -->
+          <p v-if="mod.configured" class="wel__lead">
+            Et ce qu'on masque, on le dit : chaque décision de modération est un message signé,
+            avec son motif, que tout le monde peut relire.
+          </p>
+          <div class="wel__actions">
+            <NuxtLink to="/new" class="btn btn--primary">Nouveau topic</NuxtLink>
+            <NuxtLink to="/comment-ca-marche" class="wel__more">Comment ça marche</NuxtLink>
+            <NuxtLink v-if="mod.configured" to="/moderation" class="wel__more">Qui modère ici</NuxtLink>
+          </div>
+        </div>
+      </article>
+    </div>
+  </section>
 </template>
 
 <script setup lang="ts">
 /**
- * Vue 30/70 (spec v2 §7.1) : liste à gauche, topic ouvert à droite, tout en
+ * Vue 30/70 (spec §7.1) : liste à gauche, topic ouvert à droite, tout en
  * direct, jamais de rechargement. Le state du panneau droit est dans l'URL —
  * la culture repose entièrement sur le partage de liens.
  *
- * Mobile : bascule pleine largeur (la feuille glissante à trois ancrages de
- * §7.4 n'est pas portée à l'étape 1 — elle demande une lib de gestes et ne
- * teste pas le protocole).
+ * Mobile : bascule pleine largeur. La feuille glissante à trois ancrages de
+ * §7.4 n'est pas implémentée — elle demande une bibliothèque de gestes pour un
+ * gain que la bascule donne déjà.
  */
 import { ref, computed, watch } from 'vue'
 import { FIREHOSE_TOPIC_ID, type NostrEvent } from '~/types/nostr'
@@ -238,21 +232,10 @@ async function copyPermalink(): Promise<void> {
 </script>
 
 <style scoped>
-/* Deux panneaux qui flottent sur le canevas, séparés par la gouttière. La
-   scission 30/70 de la spec est intacte ; ce qui change, c'est qu'elle n'est
-   plus tenue par un filet de 1 px mais par du vide. */
-.shell {
-  display: grid;
-  grid-template-columns: minmax(300px, 31%) 1fr;
-  gap: var(--gutter);
-  height: 100%;
-  min-height: 0;
-}
-.shell__list {
-  min-width: 0;
-  min-height: 0;
-}
+/* Le panneau de droite, seul : la grille 30/70 et la colonne de gauche vivent
+   dans `layouts/default.vue` depuis qu'elles servent TOUTES les routes. */
 .shell__topic {
+  height: 100%;
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -540,18 +523,6 @@ async function copyPermalink(): Promise<void> {
 }
 
 @media (max-width: 820px) {
-  .shell {
-    grid-template-columns: 1fr;
-  }
-  .shell__topic {
-    display: none;
-  }
-  .shell--topic-open .shell__list {
-    display: none;
-  }
-  .shell--topic-open .shell__topic {
-    display: flex;
-  }
   .topic-head,
   .topic-foot {
     padding-left: 14px;

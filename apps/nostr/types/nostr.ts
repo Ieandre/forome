@@ -1,10 +1,10 @@
 /**
- * Types de l'étape 1 (lecture seule). Un seul objet voyage — l'event NIP-01
- * (spec v2 §2.1) ; tout le reste est dérivé côté client.
+ * Les types du client. Un seul objet voyage — l'event NIP-01 (spec §2.1) ;
+ * tout le reste est dérivé côté client.
  *
  * ⚠️ Unité de temps : Nostr compte en **secondes** (`created_at`). Toute cette
- * app est en secondes, jamais en millisecondes — c'est le bug classique du
- * portage depuis la v1 qui, elle, était en ms.
+ * app est en secondes, jamais en millisecondes — mélanger les deux est le bug
+ * classique de la couche qui touche au protocole.
  */
 import type { Event } from 'nostr-tools/core'
 import type { ImageMeta } from '~/utils/media'
@@ -12,7 +12,7 @@ import type { ImageMeta } from '~/utils/media'
 export type NostrEvent = Event
 
 /**
- * Format des révisions (spec v2 §2.5), réexporté depuis le code partagé avec le
+ * Format des révisions (spec §2.5), réexporté depuis le code partagé avec le
  * relais et l'indexeur. Comme le modèle de modération : une seule définition de
  * « qu'est-ce qu'une révision », sinon le fil, la liste et le tick pourraient
  * répondre différemment — et un désaccord se traduirait par des compteurs faux
@@ -34,7 +34,7 @@ export {
  */
 export { COMMUNITY, communityTag, communityFilter, inCommunity } from '@forome/relay-policy'
 
-/** Kinds utilisés (spec v2 §2.3). */
+/** Kinds utilisés (spec §2.3). */
 export const KIND_PROFILE = 0
 export const KIND_NOTE = 1
 export const KIND_CONTACTS = 3
@@ -46,9 +46,9 @@ export const KIND_MUTE_LIST = 10000
 export const KIND_GIFT_WRAP = 1059
 
 /**
- * Ligne de la liste de topics. Équivalent du `TickTopic` de la v1, mais
- * calculé côté client : sans indexeur il n'y a pas de tick (spec v2 §5.4),
- * donc l'étape 1 assume le coût et la vue partielle.
+ * Ligne de la liste de topics. Vient du tick de l'indexeur quand il y en a un,
+ * sinon d'un calcul local : sans indexeur il n'y a pas de tick (spec §5.4), et
+ * le client assume alors le coût et la vue partielle.
  */
 export interface TopicRow {
   id: string
@@ -69,9 +69,9 @@ export interface TopicRow {
 }
 
 /**
- * Un post du fil. `index` est la **numérotation locale** : elle remplace le
- * `#seq` de la v1, qui n'a plus de fondement protocolaire (spec v2 §6.4).
- * Le permalien canonique est l'`nevent`, pas ce numéro.
+ * Un post du fil. `index` est la **numérotation locale** : un numéro de
+ * séquence n'a aucun fondement protocolaire sur Nostr (spec §6.4), donc le
+ * permalien canonique est l'`nevent`, jamais ce numéro.
  */
 export interface Post {
   /**
@@ -200,7 +200,7 @@ export const KIND_APP_DATA = 30078
 export const TICK_D_TAG = 'forome.tick'
 
 /**
- * Le tick publié par l'indexeur (spec v2 §5.2) — un instantané calculé une fois,
+ * Le tick publié par l'indexeur (spec §5.2) — un instantané calculé une fois,
  * signé, et reçu identique par tous les clients.
  *
  * Le client ne fait **jamais** confiance aveuglément : la signature dit qui l'a

@@ -51,7 +51,7 @@ export interface ReportGroup {
   /** le plus récent des signalements du groupe */
   lastAt: number
   /**
-   * Voix distinctes (spec v2 §9.6) — **pas** le nombre de signalements. C'est
+   * Voix distinctes (spec §9.6) — **pas** le nombre de signalements. C'est
    * ce nombre qui trie la file.
    */
   voices: number

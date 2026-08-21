@@ -1,18 +1,18 @@
 /**
  * Relais NIP-01 minimal, **pour le développement seulement**.
  *
- * Pourquoi il existe : l'étape 2 est la première qui écrit sur le réseau, et sur
- * Nostr écrire est **irréversible** — un event publié sur un relais public n'en
- * sort plus (spec v2 §2.5). Tester la publication contre `relay.damus.io`
+ * Pourquoi il existe : sur Nostr, écrire est **irréversible** — un event publié
+ * sur un relais public n'en sort plus (spec §2.5). Tester la publication contre
+ * `relay.damus.io`
  * reviendrait donc à polluer définitivement un bien commun avec des events de
  * test. Ce relais-là est en mémoire, local, et disparaît avec le process.
  *
- * Ce n'est PAS strfry (étape 3) : pas de persistance, pas de policy d'écriture,
- * pas de negentropy, pas de NIP-42. Juste assez de NIP-01 pour vérifier la
- * boucle publier → stocker → souscrire → afficher.
+ * Ce n'est PAS strfry : pas de persistance, pas de policy d'écriture, pas de
+ * negentropy, pas de NIP-42. Juste assez de NIP-01 pour vérifier la boucle
+ * publier → stocker → souscrire → afficher.
  *
- * Il applique quand même deux règles, parce que ce sont précisément celles que
- * l'étape 2 doit pouvoir observer :
+ * Il applique quand même deux règles, parce que ce sont celles qu'un
+ * développement doit pouvoir observer :
  *   - vérification de signature (un event invalide est refusé)
  *   - PoW minimale optionnelle via MIN_POW, pour voir un refus légitime
  *

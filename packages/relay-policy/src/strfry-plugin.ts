@@ -1,5 +1,5 @@
 /**
- * Plugin de policy d'écriture pour strfry (spec v2 §12.2, §13).
+ * Plugin de policy d'écriture pour strfry (spec §12.2, §13).
  *
  * Protocole strfry : une requête JSON par ligne sur stdin, une réponse JSON par
  * ligne sur stdout. Le process reste vivant entre les events — d'où le suivi de
@@ -13,10 +13,10 @@
  *         }
  *     }
  *
- * **Vérifié contre un vrai strfry** depuis le 2026-08-15 (`npm run smoke:strfry`,
- * voir `docs/strfry.md`). Ce que ça a rapporté et qu'aucun test unitaire ne
- * pouvait donner : `run-strfry.sh` n'avait pas le bit exécutable, donc strfry
- * n'arrivait pas à lancer le plugin — et **refusait tout** en « internal error ».
+ * **Vérifié contre un vrai strfry** par `npm run smoke:strfry` (voir
+ * `docs/strfry.md`). Ce que ce test rapporte et qu'aucun test unitaire ne peut
+ * donner : sans le bit exécutable sur `run-strfry.sh`, strfry n'arrive pas à
+ * lancer le plugin — et **refuse tout** en « internal error ».
  * Le sens du défaut est le bon (une policy tombée ne doit pas ouvrir la porte),
  * mais le symptôme ne ressemble en rien à sa cause : penser au bit `+x` avant de
  * chercher le bug dans ce fichier.

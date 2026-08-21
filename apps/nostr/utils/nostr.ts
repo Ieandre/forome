@@ -14,7 +14,7 @@ export function tagValue(ev: NostrEvent, name: string): string | null {
 }
 
 /**
- * Racine du fil auquel appartient cet event (spec v2 §2.3).
+ * Racine du fil auquel appartient cet event (spec §2.3).
  * NIP-22 met la racine en tag MAJUSCULE `E` et le parent immédiat en `e`.
  * On tolère aussi le vieux style NIP-10 (`e` marqué "root") pour ne pas
  * ignorer les events des clients qui ne sont pas encore passés à NIP-22.
@@ -55,7 +55,7 @@ export function topicTitle(ev: NostrEvent): string {
  * comme sur tout forum. Le volume ne départage que les rangées touchées dans la
  * même seconde.
  *
- * Renoncement assumé à la vélocité (spec v2 §5.3), pour une raison qui ne se lit
+ * Renoncement assumé à la vélocité (spec §5.3), pour une raison qui ne se lit
  * pas dans la formule : la vélocité dépend de l'heure et pas seulement des
  * messages. Elle changeait donc de valeur à chaque recalcul (2 s) **sans qu'un
  * message arrive**, et deux topics quasi à égalité s'échangeaient leur rang en
@@ -81,7 +81,7 @@ export function compareTopicRows(x: TopicRow, y: TopicRow): number {
 /* -------------------------------------------------------------- identité */
 
 /**
- * Pseudo par défaut (spec v2 §3.1) : `khey_` + 8 premiers hex de la clé
+ * Pseudo par défaut (spec §3.1) : `khey_` + 8 premiers hex de la clé
  * publique. Déterministe, sans état, et déjà une identité — aucun event
  * kind 0 n'est nécessaire pour exister.
  */
@@ -91,7 +91,7 @@ export function kheyHandle(pubkey: string): string {
 
 /**
  * Discriminant de clé, à afficher **toujours** à côté d'un pseudo choisi
- * (spec v2 §3.5) : sur Nostr le nom n'est pas unique, donc un pseudo seul
+ * (spec §3.5) : sur Nostr le nom n'est pas unique, donc un pseudo seul
  * ne distingue pas deux comptes.
  */
 export function keyDiscriminator(pubkey: string): string {
@@ -153,10 +153,9 @@ function hexBytes(hex: string): number[] {
  * intermédiaire : une clé publique est déjà 32 octets uniformes. Grille 5×5
  * symétrique, teinte dérivée des deux premiers octets.
  *
- * Porté de `packages/protocol/src/identicon.ts`, moins la dépendance à
- * `publicKeyFromId` qui validait une clé Ed25519 (spec v2 §3.3 du doc de
- * migration). Visuellement l'identité EST la clé, ce qui en fait une défense
- * directe contre l'usurpation de pseudo.
+ * Visuellement, l'identité EST la clé : deux clés ne peuvent pas produire le
+ * même avatar, ce qui en fait une défense directe contre l'usurpation de pseudo
+ * (spec §3.5).
  */
 export function identiconSvg(pubkey: string, size = 64): string {
   const b = hexBytes(pubkey)
@@ -211,7 +210,7 @@ export function identiconDataUri(pubkey: string): string {
 /* ------------------------------------------------------------ permaliens */
 
 /**
- * Permalien canonique (spec v2 §6.4) : l'`nevent`, jamais le numéro de post.
+ * Permalien canonique (spec §6.4) : l'`nevent`, jamais le numéro de post.
  * Il fonctionne dans n'importe quel autre client Nostr.
  */
 export function neventFor(ev: NostrEvent, relays: string[] = []): string {

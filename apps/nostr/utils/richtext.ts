@@ -2,17 +2,17 @@
  * Texte enrichi des posts : analyse d'un sous-ensemble Markdown en arbre de
  * tokens.
  *
- * ## Pourquoi du Markdown et pas le balisage de JVC
+ * ## Pourquoi du Markdown et pas un balisage maison
  *
- * JVC utilise son propre balisage (`'''gras'''`). Le reprendre tel quel aurait
- * enfermé les posts : aucun autre client Nostr ne le rendrait, et un message
- * apparaîtrait avec ses apostrophes visibles partout ailleurs — ce qui abîme
- * exactement l'interopérabilité qui justifiait le pivot (spec v2 §0).
+ * Les forums francophones ont chacun le leur (`'''gras'''` et compagnie). En
+ * reprendre un aurait enfermé les posts : aucun autre client Nostr ne le
+ * rendrait, et un message apparaîtrait avec ses apostrophes visibles partout
+ * ailleurs — ce qui abîme l'interopérabilité même qui justifie Nostr.
  *
  * Le Markdown n'est pas un standard Nostr, mais il **dégrade proprement** :
  * `**gras**` reste lisible en texte brut, et plusieurs clients le rendent déjà.
- * La barre d'outils, elle, garde le comportement JVC — c'est l'ergonomie qui
- * compte pour l'utilisateur, pas les caractères choisis.
+ * La barre d'outils, elle, garde le comportement attendu d'un forum — c'est
+ * l'ergonomie qui compte pour l'utilisateur, pas les caractères choisis.
  *
  * ## Pourquoi un parseur maison plutôt qu'une bibliothèque
  *

@@ -228,7 +228,7 @@ export function serializeToMarkup(root: HTMLElement): string {
 /* --------------------------------------------------------- balisage → DOM
  *
  * L'inverse exact de ce qui précède, et il n'existe que pour **rouvrir un
- * message déjà publié** dans l'éditeur (spec v2 §2.5).
+ * message déjà publié** dans l'éditeur (spec §2.5).
  *
  * ## Pourquoi ici, et pas en réutilisant `RichText`
  *

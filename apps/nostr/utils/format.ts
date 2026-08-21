@@ -38,7 +38,7 @@ export function relativeTime(sec: number): string {
 }
 
 /**
- * Horodatage de post, au format des forums de jeuxvideo.com :
+ * Horodatage de post, au format long des forums francophones :
  * « Le 11 août 2026 à 15:18:22 ». Le jour est omis pour la journée en cours,
  * parce que dans un fil vivant il est redondant sur des centaines de rangées.
  *

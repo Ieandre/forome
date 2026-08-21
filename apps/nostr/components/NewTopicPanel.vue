@@ -132,7 +132,7 @@
 
 <script setup lang="ts">
 /**
- * Création de topic (spec v2 §2.3) : kind 11 avec un tag `title`.
+ * Création de topic (spec §2.3) : kind 11 avec un tag `title`.
  *
  * L'écran est composé comme le topic qu'il va produire — en-tête d'auteur,
  * titre, corps, action en bas — parce que c'est le seul repère qu'on a avant

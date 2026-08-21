@@ -1,5 +1,5 @@
 /**
- * Publication (spec v2 §2.3, §6.3, §12.1).
+ * Publication (spec §2.3, §6.3, §12.1).
  *
  * Chaîne complète : construire → **miner** → signer → afficher (optimiste) →
  * diffuser. L'ordre compte : le nonce de la PoW est dans les tags, donc dans
@@ -142,7 +142,7 @@ export function usePublisher() {
   }
 
   /**
-   * Tags de fil d'une révision (spec v2 §2.5).
+   * Tags de fil d'une révision (spec §2.5).
    *
    * **Recopiés de l'original plutôt que reconstruits.** `replyTags()` a besoin de
    * l'event parent, qui n'est pas forcément chargé au moment où l'on corrige un

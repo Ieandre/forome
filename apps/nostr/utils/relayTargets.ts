@@ -1,11 +1,10 @@
 /**
  * Qui l'on interroge, et à qui l'on écrit.
  *
- * Ce sont **deux ensembles différents**, et les confondre est le bug qui a envoyé
- * le premier message de Forome sur quatre relais publics depuis un serveur de
- * développement (2026-08-15). Le défaut visait le réseau public parce qu'il
- * datait de l'étape 1, où le client ne faisait que lire — lire chez les autres
- * est sans conséquence, écrire chez eux est définitif.
+ * Ce sont **deux ensembles différents**, et les confondre est le piège de ce
+ * fichier : lire chez les autres est sans conséquence, écrire chez eux est
+ * définitif. Un client qui prend l'un pour l'autre publie sur des relais qu'il
+ * ne maîtrise pas, et rien ne s'y reprend.
  *
  * La règle tient en deux lignes :
  *
@@ -14,7 +13,8 @@
  *   - **écrire** chez nous ET chez les autres. C'est ce qui rend vraie la
  *     promesse de §9.3 — « rien ne peut être retiré du réseau, et tu peux
  *     emporter ce que tu as écrit dans n'importe quel autre client ». Un forum
- *     qui n'écrirait que chez lui serait la v1 centralisée en costume Nostr.
+ *     qui n'écrirait que chez lui serait un service centralisé en costume
+ *     Nostr.
  *
  * En développement, les deux ensembles se réduisent au relais local : ce qu'on
  * teste n'a rien à faire sur le réseau, et rien ne s'y efface.
@@ -63,9 +63,9 @@ export function isThirdPartyRelay(url: string, homeRelay = ''): boolean {
 /**
  * Relais à interroger.
  *
- * On retombe sur les relais publics quand notre relais n'est pas déployé : c'est
- * l'état d'aujourd'hui, et un forum qui n'afficherait rien serait pire qu'un
- * forum qui affiche ce qui existe.
+ * On retombe sur les relais publics quand `homeRelay` n'est pas configuré : un
+ * forum qui n'afficherait rien serait pire qu'un forum qui affiche ce qui
+ * existe.
  */
 export function readTargets(plan: RelayPlan): string[] {
   if (plan.dev) return clean([plan.devRelay])

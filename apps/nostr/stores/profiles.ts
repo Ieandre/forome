@@ -1,5 +1,5 @@
 /**
- * Résolution des profils kind 0 (spec v2 §11.1), avec cache et regroupement.
+ * Résolution des profils kind 0 (spec §11.1), avec cache et regroupement.
  *
  * Règle produit : **un pseudo absent n'est pas un problème.** Le défaut
  * `khey_xxxxxxxx` est déjà une identité (§3.1), donc l'affichage ne dépend
@@ -141,7 +141,7 @@ export const useProfileStore = defineStore('profiles', () => {
   }
 
   /**
-   * Vérification NIP-05 réelle (spec v2 §3.5) : requête
+   * Vérification NIP-05 réelle (spec §3.5) : requête
    * `https://<domaine>/.well-known/nostr.json?name=<nom>` et comparaison à la
    * clé publique. C'est la seule unicité de pseudo disponible sur Nostr, et son
    * prix est que le domaine redevient autorité de nommage.

@@ -229,7 +229,7 @@
 
 <script setup lang="ts">
 /**
- * Messages privés (spec v2 §10). Deux files délibérément : la boîte, et ce qui
+ * Messages privés (spec §10). Deux files délibérément : la boîte, et ce qui
  * vient de clés hors web of trust. Voir `stores/dms.ts` pour la chaîne de
  * chiffrement et pour ce que le gift wrap casse.
  *

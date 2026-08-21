@@ -1,11 +1,9 @@
 # Modération outillée : équipe, pouvoirs, panneau
 
-> Document de conception. Complète le **§9 de la spec v2** (« Modération :
-> filtrer, pas supprimer »), qui pose la philosophie mais s'arrête aux contrôles
-> côté lecteur. Ce document décrit la couche qui manque : **une équipe qui agit
-> pour tout le monde**, et l'outil qui lui sert à travailler.
->
-> Rien ici n'est implémenté. Les zones ouvertes du §12 sont à trancher avant.
+> Complète le **§9 de la conception** (« Modération : filtrer, pas supprimer »),
+> qui pose la philosophie mais s'arrête aux contrôles que chaque lecteur règle
+> pour lui-même. Ce document décrit la couche au-dessus : **une équipe qui agit
+> pour tout le monde**, ses pouvoirs, et l'outil qui lui sert à travailler.
 
 ---
 
@@ -92,7 +90,7 @@ le roster du premier venu donnerait à un inconnu le pouvoir de masquer l'écran
 principal.** Sans clé épinglée, aucun staff, aucune action appliquée, panneau
 inaccessible.
 
-> **Tranché** (2026-08-13) : clé **dédiée**, qui ne sert qu'à ça, gardée hors du
+> **Tranché** : clé **dédiée**, qui ne sert qu'à ça, gardée hors du
 > navigateur et signant par bunker NIP-46. Ce n'est pas l'identité de tous les
 > jours de l'opérateur — une clé qui poste quotidiennement est exposée
 > quotidiennement, et Nostr n'a pas de révocation.
@@ -112,8 +110,8 @@ règle d'exploitation qui va avec, et qui fait partie de la conception :
   qui est déjà implémenté et déjà testé (`npm run smoke:nip46`)
 - le travail quotidien passe par les clés des modérateurs, elles révocables
 
-Clé racine froide, clés de travail chaudes. C'est le modèle à deux étages de la
-v1, reconstruit avec ce que Nostr permet.
+Clé racine froide, clés de travail chaudes : le modèle à deux étages, reconstruit
+avec ce que Nostr permet.
 
 ### 3.2 Le roster — qui est modérateur
 
@@ -213,7 +211,7 @@ c'est non » : sans lui, un signalement abusif remonte indéfiniment.
 
 ## 5. Deux régimes de masquage, et pourquoi ils ne diffèrent pas que d'un bouton
 
-> **Tranché** (2026-08-13) : dépliable par défaut, **sauf** la catégorie
+> **Tranché** : dépliable par défaut, **sauf** la catégorie
 > « illégal ». Ce qui suit dit ce que chacun des deux régimes engage.
 
 ### 5.1 Éditorial — replier, pas escamoter
@@ -366,7 +364,7 @@ compteur qu'on regarde sans agir dessus n'a rien à faire ici.
 
 ### 9.1 La page publique `/moderation`
 
-> **Tranché** (2026-08-13) : oui, **avec le nom du modérateur qui a agi**.
+> **Tranché** : oui, **avec le nom du modérateur qui a agi**.
 
 Une page ordinaire du forum, ouverte à tous : l'équipe, et les décisions en
 vigueur — quoi, par qui, pour quel motif.
@@ -378,8 +376,8 @@ c'est qu'elles deviennent lisibles **par un lecteur ordinaire**. Sans elle, le
 relais à la main — c'est-à-dire pour personne.
 
 Ce que ça engage, et qu'il vaut mieux avoir décidé que subi : **les modérateurs
-sont nommés à chaque décision contestée.** Sur un forum de culture 18-25, avec
-les raids du §9.5, c'est aussi une liste de cibles. Trois conséquences à tenir
+sont nommés à chaque décision contestée.** Sur un forum à haut débit, avec les
+raids du §9.5, c'est aussi une liste de cibles. Trois conséquences à tenir
 dans l'interface :
 
 - un modérateur devrait pouvoir travailler sous une **clé de rôle** distincte de
@@ -435,9 +433,9 @@ dans l'interface :
   republications de façon strictement croissante (`nextStamp`). Trouvé par
   `npm run smoke:moderation`, pas anticipé.
 
-## 12. Zones ouvertes
+## 12. Les décisions, et leur statut
 
-### Tranché le 2026-08-13
+### Tranché
 
 1. **Clé racine** — clé dédiée, hors du navigateur, signature par bunker NIP-46.
    `?admin=<hex>` en développement, comme `?indexer=`. (§3.1)
@@ -460,10 +458,9 @@ dans l'interface :
    juridiquement et déclenche une purge — ce n'est pas de la modération
    éditoriale.
 
-## 13. Plan d'implémentation
+## 13. Où ça vit dans le code
 
-Une fois le §12 tranché. L'ordre suit la chaîne de confiance : ce qui se vérifie
-sans interface d'abord.
+L'ordre suit la chaîne de confiance : ce qui se vérifie sans interface d'abord.
 
 | # | Portée | Fichiers | Vérification |
 |---|---|---|---|
@@ -478,3 +475,5 @@ sans interface d'abord.
 
 Rien de tout ça ne touche au réseau public : la vérification se fait contre
 `npm run dev:relay`, avec `?admin=` et `?relays=`, comme le reste (README).
+`npm run smoke:moderation` fait le trajet complet — roster, bannissement, refus
+réel du relais.

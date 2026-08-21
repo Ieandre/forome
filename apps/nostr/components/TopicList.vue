@@ -12,7 +12,7 @@
          où l'ordre a réellement changé pendant le gel, est déjà porté par la
          pilule en dessous. -->
     <div class="topic-list__head" :class="{ 'topic-list__head--searching': searching }">
-      <span v-if="!searching" class="topic-list__label">Topics</span>
+      <SectionTabs v-if="!searching" />
 
       <!-- La loupe reste le même bouton dans les deux états : elle ouvre le
            champ, puis elle y ramène le curseur. La bulle se coupe une fois le
@@ -239,23 +239,12 @@
       </div>
     </div>
 
-    <p class="topic-list__note">
-      <Explain
-        term="définitif"
-        placement="top"
-        :body="[
-          'Un message part sur plusieurs relais indépendants, qui en gardent chacun leur copie. Personne ne peut les effacer toutes.',
-          'Tu peux demander la suppression : les relais qui l\'acceptent cessent de servir le message, les autres continuent.',
-        ]"
-        >Tout ce qui est posté ici est définitif.</Explain
-      >
-    </p>
   </div>
 </template>
 
 <script setup lang="ts">
 /**
- * Ordre figé (spec v2 §7.1). Trois déclencheurs : la souris sur la liste, le
+ * Ordre figé (spec §7.1). Trois déclencheurs : la souris sur la liste, le
  * filtre ouvert, ou le panneau droit occupé (topic ouvert ou rédaction). L'ordre
  * affiché ne bouge plus, les changements s'accumulent, la pilule les applique
  * d'un coup.
@@ -506,7 +495,7 @@ const showPill = computed(
 const liveById = computed(() => new Map(topicStore.rows.map((r) => [r.id, r])))
 
 /**
- * Le topic ouvert reste visible quoi qu'il arrive à son rang (spec v2 §7.1).
+ * Le topic ouvert reste visible quoi qu'il arrive à son rang (spec §7.1).
  * S'il sort du classement, on le garde en fin de liste — `rowFor` sait le
  * fabriquer même hors des 80 rangées publiées, ce que `rowById` ne pouvait pas.
  */
@@ -647,16 +636,14 @@ onBeforeUnmount(() => {
 <style scoped>
 /* La colonne est un panneau qui flotte sur le canevas : plus de filet de
    séparation avec le fil, c'est la gouttière qui sépare. */
+/* Plus de surface ni de filet ici : c'est `SideColumn` qui est le panneau, et
+   la liste n'en est qu'un des trois étages (chrome, liste, pied). */
 .topic-list {
   display: flex;
   flex-direction: column;
   height: 100%;
   min-height: 0;
-  background: var(--surface);
-  border: 1px solid var(--line-soft);
-  border-radius: var(--r-panel);
-  box-shadow: var(--elev-2);
-  overflow: hidden;
+  min-width: 0;
   position: relative;
 }
 
@@ -669,13 +656,6 @@ onBeforeUnmount(() => {
   flex-shrink: 0;
   padding: 12px 14px;
   border-bottom: 1px solid var(--line-soft);
-}
-.topic-list__label {
-  font-size: var(--fs-sm);
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--ink-3);
 }
 
 /* Le filet du bas se met au bleu pendant la saisie : la ligne de tête EST le
@@ -987,14 +967,6 @@ onBeforeUnmount(() => {
   width: 88%;
 }
 
-.topic-list__note {
-  flex-shrink: 0;
-  margin: 0;
-  padding: 10px 14px;
-  border-top: 1px solid var(--line-soft);
-  font-size: var(--fs-xs);
-  color: var(--ink-4);
-}
 
 .pill-pop-enter-active,
 .pill-pop-leave-active {

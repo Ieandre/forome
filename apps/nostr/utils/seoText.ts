@@ -10,7 +10,7 @@
 export const SEO_SITE_NAME = 'Forome'
 
 export const SEO_DEFAULT_DESCRIPTION =
-  'Le forum généraliste de la culture 18-25, sur Nostr : tu lis en deux secondes, ' +
+  'Le forum généraliste à haut débit, sur Nostr : tu lis en deux secondes, ' +
   'tu postes sans compte, et rien ne peut être retiré du réseau.'
 
 export const SEO_DOC_TITLE = 'Comment ça marche'

@@ -3,11 +3,11 @@
  *
  * ## Pourquoi ce fichier existe
  *
- * NIP-46 est la seule réponse au trou le plus béant du modèle Nostr (spec v2
+ * NIP-46 est la seule réponse au trou le plus béant du modèle Nostr (spec
  * §3.2) : il n'y a ni délégation ni révocation, donc **perte d'appareil =
  * identité perdue**. Avec un bunker, la clé vit dans un seul endroit et les
- * clients obtiennent une *autorisation* — révocable indépendamment. C'est le
- * modèle à deux étages de la v1, reconstruit une couche plus haut.
+ * clients obtiennent une *autorisation* — révocable indépendamment. Le modèle à
+ * deux étages, reconstruit une couche au-dessus du protocole.
  *
  * Écrire le client sans pouvoir le tester serait livrer du code non vérifié sur
  * la brique la plus sensible du projet. D'où ce bunker, même logique que

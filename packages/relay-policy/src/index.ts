@@ -1,5 +1,5 @@
 /**
- * Policy d'écriture (spec v2 §12.2).
+ * Policy d'écriture (spec §12.2).
  *
  * **Le seul endroit du système où on peut refuser un event avant stockage.** Sur
  * Nostr il n'y a pas de suppression (§2.5) : ce qui est accepté est définitif.
@@ -10,8 +10,8 @@
  *   - le relais de dev (`scripts/dev-relay.ts`), qui l'appelle en process
  *
  * Une seule implémentation, donc : ce qui est testé ici est exactement ce qui
- * tourne en production. C'est la leçon que la v1 avait apprise sur la
- * canonicalisation, appliquée à la policy.
+ * tourne en production. Deux copies d'une règle de sécurité finissent toujours
+ * par diverger.
  */
 import { verifyEvent } from 'nostr-tools/pure'
 import { getPow } from 'nostr-tools/nip13'

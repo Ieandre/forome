@@ -1,5 +1,5 @@
 /**
- * Mineur de preuve de travail NIP-13, dans un worker (spec v2 §12.1).
+ * Mineur de preuve de travail NIP-13, dans un worker (spec §12.1).
  *
  * `minePow` est **synchrone** et la doc amont dit explicitement de la lancer
  * hors du thread principal : à difficulté 20 c'est ~1 M de hachages, donc un fil

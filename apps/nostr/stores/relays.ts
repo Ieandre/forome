@@ -1,11 +1,11 @@
 /**
- * La couche relais — remplaçante de `useSocket` de la v1 (spec v2 §5.1).
+ * La couche relais (spec §5.1).
  *
- * Différence de modèle à garder en tête : en v1 il y avait UNE socket vers
- * NOTRE serveur, qui garantissait l'ordre et l'unicité. Ici il y a N sockets
- * vers des relais qui ne se connaissent pas, qui renvoient les mêmes events en
- * double et dans n'importe quel ordre. Le dédoublonnage par `id` est ce qui
- * rend la réplication invisible — et c'est le but.
+ * Le modèle à garder en tête : il n'y a pas UNE socket vers un serveur qui
+ * garantirait l'ordre et l'unicité, mais N sockets vers des relais qui ne se
+ * connaissent pas, qui renvoient les mêmes events en double et dans n'importe
+ * quel ordre. Le dédoublonnage par `id` est ce qui rend la réplication
+ * invisible — et c'est le but.
  *
  * La vérification de signature est active par défaut (`pool.verifyEvent`), donc
  * un relais ne peut pas nous injecter un event forgé.

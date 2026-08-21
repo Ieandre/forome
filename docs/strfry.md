@@ -1,8 +1,7 @@
 # strfry — le relais du forum
 
-> Comble le dernier trou de l'étape 3 (`migration-nostr.md` §9) : la policy
-> d'écriture existait et était testée, mais **jamais contre le vrai strfry**.
-> Elle l'est maintenant.
+> Compiler le relais, le lancer, et vérifier que la policy d'écriture s'applique
+> **à travers le vrai strfry** et pas seulement dans ses tests unitaires.
 
 ## Pourquoi un relais à nous
 
@@ -18,7 +17,7 @@ C'est ce relais qui fait appliquer les règles dont l'opérateur répond :
 - la preuve de travail, l'horodatage, la taille, le débit par clé
 - les bannissements et les verrouillages décidés par le panneau de modération
 
-## Installation (macOS, testé le 2026-08-15)
+## Installation (macOS)
 
 ```sh
 brew install flatbuffers lmdb openssl@3 zstd secp256k1 libuv perl cpanminus
@@ -66,8 +65,8 @@ npm run dev:strfry      # port 7778, base persistante dans .strfry/strfry-db/
 
 Puis ouvrir simplement `http://localhost:3002/` : **en développement, le client
 vise ce relais par défaut** (`devRelay` dans `nuxt.config.ts`). Plus besoin de
-`?relays=` — et surtout, plus moyen d'écrire sur le réseau public par distraction,
-ce qui est arrivé le 2026-08-15. Voir `apps/nostr/utils/relayTargets.ts`.
+`?relays=` — et surtout, plus moyen d'écrire sur le réseau public par
+distraction. Voir `apps/nostr/utils/relayTargets.ts`.
 
 Pour viser l'autre relais de dev (le Node, port 7447), il faut le dire :
 `http://localhost:3002/?relays=ws://localhost:7447`.
@@ -129,16 +128,17 @@ L'asymétrie de production est le cœur du modèle, et elle vient de la spec :
 
 - **écrire chez les tiers** rend vraie la promesse de §9.3 — « rien ne peut être
   retiré du réseau, et tu peux emporter ce que tu as écrit dans n'importe quel
-  autre client ». Un forum qui n'écrirait que chez lui serait la v1 centralisée
-  en costume Nostr : tous les inconvénients du protocole, aucun de ses bénéfices.
+  autre client ». Un forum qui n'écrirait que chez lui serait un service
+  centralisé en costume Nostr : tous les inconvénients du protocole, aucun de ses
+  bénéfices.
 - **lire chez nous** parce que la policy ne s'applique qu'ici. Un bannissement
   veut dire « mon relais refuse ses écritures » : si le client lisait aussi
   ailleurs, la personne bannie réapparaîtrait — non par ruse, mais parce que
   notre pouvoir s'arrête à notre relais. §9.2 le dit sans détour : on répond de
   ce que notre relais sert et de ce que notre client montre, pas du reste.
 
-Tant que `homeRelay` est vide, la lecture retombe sur les relais publics : c'est
-l'état d'aujourd'hui, et un forum qui n'afficherait rien serait pire.
+Tant que `homeRelay` n'est pas configuré, la lecture retombe sur les relais
+publics : un forum qui n'afficherait rien serait pire.
 
 ## Ce qui reste ouvert
 
@@ -149,4 +149,4 @@ l'état d'aujourd'hui, et un forum qui n'afficherait rien serait pire.
   plusieurs relais à nous. Tant qu'il n'y en a qu'un, la promesse
   d'incensurabilité est théorique — c'est le point ouvert le plus important.
 - **Le retrait dur reste manuel** (`strfry delete`), et ne retire l'event que de
-  CE relais (spec v2 §9.2).
+  CE relais (conception §9.2).

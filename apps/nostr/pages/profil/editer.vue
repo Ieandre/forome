@@ -252,7 +252,7 @@
 
 <script setup lang="ts">
 /**
- * Modification du profil (spec v2 §11.1).
+ * Modification du profil (spec §11.1).
  *
  * Page jumelle de `/profil/[key]` : même scission, même rail gauche, mais la
  * colonne droite est un formulaire. Ce qui est prouvé reste en lecture seule —

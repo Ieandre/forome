@@ -76,19 +76,19 @@
 
 <script setup lang="ts">
 /**
- * Le composant à posséder (spec v2 §6, §7.5) — porté depuis la v1 avec sa
- * machine à états intacte :
+ * Le composant à posséder (spec §6, §7.5), et sa machine à états :
  *   - `hooked` (accroché) : true à moins de ~80 px du bas
  *   - tampon de lissage à cadence variable, actif seulement si accroché
  *   - cap DOM dur (~150, ~80 en ambiance)
  *   - correction de scrollTop au chargement d'anciens (piège n°1, §6.2)
  *   - ordre d'arrivée = loi, jamais de réordonnancement de l'affiché
  *
- * Ce qui change par rapport à la v1 :
- *   - la source est un relais, pas notre serveur ; les events arrivent **en
+ * Ce que le protocole impose ici :
+ *   - la source est un relais, pas un serveur à nous ; les events arrivent **en
  *     désordre** au chargement initial → on trie une fois, à la réconciliation
  *     initiale seulement (§6.4)
- *   - la pagination se fait sur `created_at` (`until`), plus sur `seq`
+ *   - la pagination se fait sur `created_at` (`until`), faute de numéro de
+ *     séquence
  *   - la numérotation est locale (§6.4) : `baseOffset` la garde cohérente
  *     malgré le cap DOM, et elle se décale quand on découvre du plus ancien —
  *     ce décalage EST la propriété documentée, pas un défaut
@@ -315,7 +315,7 @@ function neventOf(id: string): string {
 }
 
 /**
- * Révisions connues, par ancre puis par id (spec v2 §2.5).
+ * Révisions connues, par ancre puis par id (spec §2.5).
  *
  * Indexées par id à l'intérieur parce qu'un même event arrive de plusieurs
  * relais : une liste finirait par contenir dix copies de la même correction.
@@ -763,7 +763,7 @@ function onReplyRequest(id: string): void {
 }
 
 /**
- * Affichage optimiste de son propre message (spec v2 §6.3) : **jamais par le
+ * Affichage optimiste de son propre message (spec §6.3) : **jamais par le
  * tampon**, sinon écrire donne l'impression que le site est cassé.
  *
  * Garde anti-doublon : l'écho du relais arrivera aussi par la souscription

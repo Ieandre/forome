@@ -1,5 +1,5 @@
 /**
- * Génération de l'identité au démarrage (spec v2 §3.1).
+ * Génération de l'identité au démarrage (spec §3.1).
  *
  * « Pendant ce temps, en arrière-plan et sans rien lui demander, l'app génère sa
  * paire de clés. Il ne le sait même pas encore : il est déjà khey_a3f81b2c. »

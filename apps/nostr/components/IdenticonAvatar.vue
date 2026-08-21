@@ -26,7 +26,7 @@ const props = withDefaults(
 
 // Calculé localement depuis la clé publique — zéro upload, zéro requête
 // réseau. L'identité EST la clé, l'avatar en est la projection, et c'est ce
-// qui rend l'usurpation de pseudo visible (spec v2 §3.5).
+// qui rend l'usurpation de pseudo visible (spec §3.5).
 const src = computed(() => identiconDataUri(props.pubkey))
 </script>
 

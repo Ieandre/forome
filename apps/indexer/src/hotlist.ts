@@ -1,10 +1,8 @@
 /**
- * Liste chaude (spec v2 §5.2, §5.3) — **portée depuis `apps/server/src/services/
- * hotlist.ts`** de la v1, dont la logique de vélocité était bonne et n'avait
- * aucune raison d'être réinventée.
+ * Liste chaude (spec §5.2, §5.3) : le classement des topics par vélocité.
  *
- * Ce qui change avec Nostr :
- *   - l'entrée n'est plus un message ingéré par notre serveur mais un event
+ * Ce que le protocole impose, et qui dicte tout le fichier :
+ *   - l'entrée n'est pas un message ingéré par un serveur à nous mais un event
  *     arrivé d'un relais, donc **possiblement en double et dans le désordre**
  *   - il n'y a plus de `seq` ni de `rts` : on n'a que `created_at`, déclaré par
  *     l'auteur (§2.4). Le classement s'appuie donc sur une horloge qui peut
@@ -121,9 +119,8 @@ export class HotList {
   }
 
   /**
-   * Vélocité — formule reprise telle quelle de la v1 : **les participants pèsent
-   * plus que le volume**, sinon trois squatteurs suffisent à tenir le haut de la
-   * liste.
+   * Vélocité : **les participants pèsent plus que le volume**, sinon trois
+   * squatteurs suffisent à tenir le haut de la liste.
    */
   velocity(t: TopicActivity, nowS: number): { vel: number; ppl: number } {
     const winStart = nowS - WINDOW_S
@@ -133,10 +130,10 @@ export class HotList {
     const people = new Set<string>()
     for (let i = t.events.length - 1; i >= 0; i--) {
       const e = t.events[i]!
-      // `continue`, pas `break` : la v1 pouvait s'arrêter au premier event hors
-      // fenêtre parce que le `seq` du serveur garantissait l'ordre
-      // chronologique. Ici l'anneau est en ordre d'ARRIVÉE, qui n'a rien à voir
-      // avec `created_at` — s'arrêter tôt sous-compterait le topic.
+      // `continue`, pas `break` : l'anneau est en ordre d'ARRIVÉE, qui n'a rien
+      // à voir avec `created_at`. S'arrêter au premier event hors fenêtre
+      // demanderait un ordre chronologique garanti, que personne ne garantit
+      // ici — et sous-compterait le topic.
       if (e.at < winStart) continue
       inWindow++
       people.add(e.pubkey)

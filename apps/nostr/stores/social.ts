@@ -1,11 +1,11 @@
 /**
- * Suivre, bloquer, web of trust (spec v2 §11.2, §12.3).
+ * Suivre, bloquer, web of trust (spec §11.2, §12.3).
  *
  * ## Suivre et bloquer, pas d'amis réciproques
  *
- * Décision v1 conservée : l'amitié réciproque coûte cher (demandes,
- * acceptations, états intermédiaires) et JVC fonctionne très bien sans. Suivre
- * (kind 3, asymétrique) et bloquer (kind 10000, asymétrique, dur) suffisent.
+ * L'amitié réciproque coûte cher (demandes, acceptations, états
+ * intermédiaires) et un forum fonctionne très bien sans. Suivre (kind 3,
+ * asymétrique) et bloquer (kind 10000, asymétrique, dur) suffisent.
  *
  * ## Le piège des events remplaçables
  *
@@ -18,7 +18,7 @@
  * on refuse de publier si la lecture a échoué. Un follow qui échoue est un
  * désagrément ; une liste de contacts effacée est irréversible.
  *
- * ## Ce que ça expose, et qui n'était pas le cas en v1
+ * ## Ce que ça expose
  *
  * La liste de follows est **publique** : qui tu suis est lisible par tout le
  * monde, pour toujours. NIP-51 permet des entrées chiffrées dans le contenu ;
@@ -53,7 +53,7 @@ export const useSocialStore = defineStore('social', () => {
    *
    * Le WoT n'en tirait qu'un compteur et jetait les ensembles ; la file de
    * modération, elle, a besoin du **graphe** pour compter des voix distinctes
-   * plutôt que des signalements (spec v2 §9.6). On garde donc ce qui était déjà
+   * plutôt que des signalements (spec §9.6). On garde donc ce qui était déjà
    * chargé, au lieu de le relire ailleurs.
    */
   const followSets = shallowRef(new Map<string, Set<string>>())

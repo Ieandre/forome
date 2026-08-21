@@ -716,7 +716,7 @@ function clear(): void {
 }
 
 /**
- * Ouvre un message déjà publié pour le corriger (spec v2 §2.5).
+ * Ouvre un message déjà publié pour le corriger (spec §2.5).
  *
  * C'est l'unique dérogation au sens unique décrit en tête de fichier, et elle
  * tient parce qu'elle a lieu **une fois, avant la première frappe** : le curseur

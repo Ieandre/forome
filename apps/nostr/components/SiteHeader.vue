@@ -129,7 +129,7 @@
         <span class="forumbar__stat mono">{{ topics.rows.length }} topics</span>
         <span class="forumbar__stat mono">{{ relays.eventsSeen }} events</span>
         <!-- Qui décide de l'ordre de l'écran principal ? La réponse est visible :
-             le tick de l'indexeur est signé, donc attribuable (spec v2 §5.4). -->
+             le tick de l'indexeur est signé, donc attribuable (spec §5.4). -->
         <Explain
           term="tri"
           placement="bottom"

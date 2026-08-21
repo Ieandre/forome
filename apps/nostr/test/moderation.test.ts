@@ -3,7 +3,7 @@
  *
  * Le cas qui compte est le brigading : trois comptes qui se suivent ne doivent
  * pas peser plus que trois inconnus. C'est la seule protection de la file
- * (spec v2 §9.6), donc c'est ce qui est testé le plus près.
+ * (spec §9.6), donc c'est ce qui est testé le plus près.
  */
 import { describe, it, expect } from 'vitest'
 import { reportTargetOf, distinctVoices, groupReports } from '../utils/moderation'

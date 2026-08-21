@@ -1,9 +1,8 @@
 /**
- * Tests du portage de la liste chaude.
+ * Tests de la liste chaude.
  *
- * Ce qui est testé en priorité, ce sont les **différences avec la v1** : le
- * désordre d'arrivée et les doublons, que Nostr introduit et que le serveur v1
- * ne pouvait pas produire.
+ * Ce qui est testé en priorité, c'est ce que **Nostr introduit** et qu'un
+ * serveur central ne produirait pas : le désordre d'arrivée et les doublons.
  */
 import { describe, it, expect } from 'vitest'
 import { HotList } from '../src/hotlist.js'
@@ -41,9 +40,9 @@ describe('liste chaude', () => {
   })
 
   it('compte tous les events de la fenêtre malgré un ordre d\'arrivée aléatoire', () => {
-    // Régression : la v1 sortait de la boucle au premier event hors fenêtre
-    // (`break`), ce qui est correct avec un ordre chronologique garanti et faux
-    // ici. Un vieil event arrivé au milieu ne doit pas masquer les suivants.
+    // Régression : sortir de la boucle au premier event hors fenêtre (`break`)
+    // serait correct avec un ordre chronologique garanti, et faux ici. Un vieil
+    // event arrivé au milieu ne doit pas masquer les suivants.
     const hot = fresh()
     hot.onReply({ topicId: 'topic-a', eventId: 'e1', pubkey: 'p1', createdAt: T0 - 30, text: 'a' })
     hot.onReply({ topicId: 'topic-a', eventId: 'vieux', pubkey: 'p9', createdAt: T0 - 5000, text: 'hors fenêtre' })
@@ -117,7 +116,7 @@ describe('détection de raid', () => {
   })
 
   it("n'alerte pas sur des clés suivies, même jamais vues avant", () => {
-    // Renforcement de l'étape 4 : le graphe kind 3 remplace le proxy faible
+    // Le graphe kind 3 remplace le proxy faible
     // « clé jamais vue ». Une clé suivie par quelqu'un n'est pas une clé de
     // ferme, même si l'indexeur la découvre à l'instant.
     const raid = new RaidDetector(24 * 3600, 0, T0)

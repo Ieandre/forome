@@ -93,7 +93,7 @@
 
 <script setup lang="ts">
 /**
- * Correction d'un message déjà publié (spec v2 §2.5).
+ * Correction d'un message déjà publié (spec §2.5).
  *
  * Le composeur en plus petit, moins ce qui n'a pas de sens ici : pas d'encart
  * d'identité (on écrit depuis des mois si on corrige), pas de destinataire, pas

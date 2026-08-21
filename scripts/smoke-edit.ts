@@ -1,5 +1,5 @@
 /**
- * Smoke test des **corrections de message** (spec v2 §2.5), contre un vrai relais.
+ * Smoke test des **corrections de message** (spec §2.5), contre un vrai relais.
  *
  * Les tests unitaires de `@forome/relay-policy` couvrent la résolution : quelle
  * version l'emporte, et pourquoi celle d'un tiers ne compte pas. Ce qu'ils ne

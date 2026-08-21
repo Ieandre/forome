@@ -253,7 +253,7 @@
 
 <script setup lang="ts">
 /**
- * Page de profil (spec v2 §11.1, §3.5).
+ * Page de profil (spec §11.1, §3.5).
  *
  * L'anatomie de la page EST l'argument : à gauche ce que la clé prouve
  * (identicon, handle, npub — dérivés, donc infalsifiables), à droite ce que la

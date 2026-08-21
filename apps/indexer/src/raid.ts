@@ -1,19 +1,19 @@
 /**
- * Détection de raid (spec v2 §9.5) — **portée depuis `apps/server/src/services/
- * raid.ts`**. La combinaison pondérée est reprise telle quelle : chaque terme
- * seul ne suffit pas, et l'accélération est pondérée par la part de comptes
- * récents — des habitués qui s'emballent ne sont pas un raid, c'est un bon topic.
+ * Détection de raid (spec §9.5). La détection est une combinaison pondérée,
+ * parce que chaque terme seul ne suffit pas : l'accélération est pondérée par la
+ * part de comptes récents — des habitués qui s'emballent ne sont pas un raid,
+ * c'est un bon topic.
  *
- * ## L'adaptation, et le renforcement de l'étape 4
+ * ## Ce qui remplace l'âge d'un compte
  *
- * La v1 disposait de `accountCreatedAt` : elle savait l'âge réel d'un compte.
- * **Nostr n'a pas ça** — une clé n'a pas de date de création, elle existe ou pas.
+ * Un serveur à comptes connaît la date d'inscription. **Nostr n'a pas ça** —
+ * une clé n'a pas de date de création, elle existe ou elle n'existe pas.
  *
- * Premier substitut (étape 3) : « clé jamais vue par cet indexeur ». Faiblesse
- * assumée et documentée : une clé vieille de trois ans mais que nous n'avions
- * jamais croisée comptait comme récente.
+ * Premier substitut : « clé jamais vue par cet indexeur ». Faiblesse assumée et
+ * documentée : une clé vieille de trois ans mais jamais croisée par cet
+ * indexeur compte comme récente.
  *
- * **Renforcement (étape 4)** : l'indexeur ingère les kind 3, et une clé **citée
+ * **Renforcement** : l'indexeur ingère les kind 3, et une clé **citée
  * dans la liste de contacts de quelqu'un** cesse d'être « récente ». C'est le web
  * of trust de §12.3 appliqué à la détection : une ferme de clés neuves n'est
  * suivie par personne, alors qu'un habitué l'est. `noteFollowGraph()` alimente ça.

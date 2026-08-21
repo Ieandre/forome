@@ -21,7 +21,7 @@
  *   3. **Le cache.** Mutualisé pour tout le monde, il transforme un tiroir ouvert
  *      mille fois en une requête amont.
  *
- * ⚠️ Décision v1 conservée : **API, pas widget.** `RisiBank.activate()` injecte
+ * ⚠️ **API, pas widget.** `RisiBank.activate()` injecte
  * son propre sélecteur dans la page, ce qui contredit à la fois le proxy (le
  * widget parle directement à RisiBank depuis le navigateur) et les gestes conçus
  * pour le composeur.

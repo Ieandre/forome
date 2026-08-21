@@ -39,7 +39,7 @@
           {{ profiles.displayName(post.pubkey) }}
         </NuxtLink>
       </Hint>
-      <!-- Le pseudo n'est pas unique sur Nostr (spec v2 §3.5) : dès qu'il vient
+      <!-- Le pseudo n'est pas unique sur Nostr (spec §3.5) : dès qu'il vient
            d'un kind 0, le discriminant de clé est obligatoire. -->
       <Explain
         v-if="profiles.isClaimedName(post.pubkey)"
@@ -111,7 +111,7 @@
 
       <span class="msg__bar-spacer" />
 
-      <!-- Horodatage au format des forums JVC. Le relatif reste en bulle :
+      <!-- Horodatage au format long des forums. Le relatif reste en bulle :
            dans un registre append-only, l'heure exacte est l'information. -->
       <Hint :text="relativeTime(post.createdAt)">
         <time class="msg__time mono">{{ forumTime(post.createdAt) }}</time>
@@ -140,7 +140,7 @@
         </button>
       </Hint>
 
-      <!-- Numérotation LOCALE (spec v2 §6.4) : ce n'est plus une preuve, c'est
+      <!-- Numérotation LOCALE (spec §6.4) : ce n'est plus une preuve, c'est
            une commodité d'affichage. Le lien copié désigne le message par son id. -->
       <Hint
         :text="`copier le permalien — le nº ${post.index} est l'ordre d'affichage ici, il n'est pas stable d'un client à l'autre`"
@@ -275,8 +275,8 @@
             </button>
           </Hint>
 
-          <!-- Signaler vit avec « Citer » : c'est la rangée d'actions des forums
-               (JVC aligne « Alerter | Bloquer | Citer »), pas un menu caché. -->
+          <!-- Signaler vit avec « Citer » : c'est la rangée d'actions des
+               forums, alignée sous le message, pas un menu caché. -->
           <Hint v-if="!own && !veiled" text="signaler ce message à la modération">
             <button
               type="button"
@@ -1128,9 +1128,10 @@ async function copyPermalink(): Promise<void> {
 /* Actions permanentes, alignées à droite comme au pied d'un bloc message. */
 /*
  * Rangée d'actions en liens texte séparés d'un filet, pas en boutons encadrés.
- * Deux raisons : c'est la convention des forums (JVC aligne « Alerter | Bloquer
- * | Citer » en liens), et sur un fil de 150 messages douze boîtes grises
- * répétées faisaient un mur de bruit qui écrasait le contenu.
+ * Deux raisons : c'est la convention des forums, qui alignent « signaler |
+ * bloquer | citer » en liens sous le message, et sur un fil de 150 messages
+ * douze boîtes grises répétées faisaient un mur de bruit qui écrasait le
+ * contenu.
  *
  * Permanentes, jamais au survol : voir §7.3, le survol n'est pas un code de
  * forum.

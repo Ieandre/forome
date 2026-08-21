@@ -1,5 +1,5 @@
 /**
- * Pilotage du mineur de PoW (spec v2 §12.1).
+ * Pilotage du mineur de PoW (spec §12.1).
  *
  * ## Le point que la spec passait sous silence
  *
@@ -33,7 +33,7 @@ import type { UnsignedEvent } from 'nostr-tools/pure'
  *
  * Ça coûte un bit ou deux de difficulté, donc un peu de confort pour un
  * spammeur. C'est le bon échange : la PoW n'a jamais été la barrière principale
- * (spec v2 §12.1 le dit — elle relève le plancher, elle n'arrête personne de
+ * (spec §12.1 le dit — elle relève le plancher, elle n'arrête personne de
  * motivé), alors que la lenteur au premier post, elle, coûte des utilisateurs.
  */
 const TARGET_MS = 120

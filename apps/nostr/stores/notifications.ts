@@ -1,5 +1,5 @@
 /**
- * Le canal personnel (spec v2 §5.1) : ce qui te concerne TOI, par opposition au
+ * Le canal personnel (spec §5.1) : ce qui te concerne TOI, par opposition au
  * forum public. La spec le décrit en une ligne — « mentions (`{"#p":[<ma clé>]}`),
  * MP (kind 1059 adressés à moi) » — et sa moitié MP existait déjà
  * (`stores/dms.ts`). Celle-ci porte l'autre moitié, plus les suivis, et réunit

@@ -1,6 +1,6 @@
 <template>
   <div class="composer" :class="{ 'composer--collapsed': collapsed }">
-    <!-- Encart d'onboarding (spec v2 §3.1). Il apparaît APRÈS le premier post,
+    <!-- Encart d'onboarding (spec §3.1). Il apparaît APRÈS le premier post,
          jamais avant : « non bloquant » pris au mot — voir le commentaire du
          script pour l'écart assumé avec la formulation d'origine. -->
     <Transition name="encart">
@@ -173,7 +173,7 @@
 
 <script setup lang="ts">
 /**
- * Composeur (spec v2 §3.1, §6.3, §12.1).
+ * Composeur (spec §3.1, §6.3, §12.1).
  *
  * ## Écart assumé avec la formulation de la spec
  *

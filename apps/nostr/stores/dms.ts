@@ -1,5 +1,5 @@
 /**
- * Messages privés NIP-17 (spec v2 §10).
+ * Messages privés NIP-17 (spec §10).
  *
  * **Le seul endroit du projet où le chiffrement a un sens.** Le E2EE n'a aucun
  * sens sur du contenu public : chiffrer pour un groupe = tout le monde.
@@ -17,19 +17,18 @@
  *
  * ## Ce que le gift wrap achète, et ce qu'il casse
  *
- * Gain sur la v1 : les relais ne savent pas qui parle à qui. Seul le
+ * Ce que ça achète : les relais ne savent pas qui parle à qui. Seul le
  * destinataire apparaît, en tag `p` de l'emballage.
  *
- * Perte sur la v1 : **le blocage côté serveur devient impossible** (§10.2). Le
+ * Ce que ça coûte : **le blocage côté serveur devient impossible** (§10.2). Le
  * relais ne peut pas connaître l'expéditeur, donc il ne peut pas filtrer sur lui.
  * Toute la défense passe côté client, après déchiffrement — d'où la file séparée
  * pour les clés hors web of trust, et la PoW exigée sur l'emballage.
  *
  * ## Pas de forward secrecy
  *
- * Une fuite de la clé rend tout l'historique lisible. Même compromis que la v1,
- * assumé, et affiché dans l'interface — ne jamais laisser croire à mieux que ce
- * qui est.
+ * Une fuite de la clé rend tout l'historique lisible. Compromis assumé, et
+ * affiché dans l'interface — ne jamais laisser croire à mieux que ce qui est.
  */
 import { defineStore } from 'pinia'
 import { ref, computed, shallowRef } from 'vue'
@@ -147,7 +146,7 @@ export const useDmStore = defineStore('dms', () => {
   /* ------------------------------------------------------------- envoi */
 
   /**
-   * Emballage **avec preuve de travail** (spec v2 §10.2, §12.2).
+   * Emballage **avec preuve de travail** (spec §10.2, §12.2).
    *
    * Pourquoi ne pas utiliser `nip17.wrapEvent` de `nostr-tools` : il génère la
    * clé éphémère en interne et signe immédiatement. Or le nonce de la PoW est
@@ -192,8 +191,7 @@ export const useDmStore = defineStore('dms', () => {
   /**
    * Envoie un MP. `wrapManyEvents` produit **deux** emballages : un pour le
    * destinataire, un pour soi — sinon l'expéditeur ne relit pas ses propres MP.
-   * C'est exactement l'insight « deux boîtes par message » de la v1, et NIP-17
-   * le prescrit.
+   * NIP-17 le prescrit : deux boîtes par message, une par lecteur légitime.
    */
   async function send(peer: string, text: string): Promise<boolean> {
     const sk = identity.secretKeyForDm()
@@ -218,8 +216,7 @@ export const useDmStore = defineStore('dms', () => {
       const seal = createSeal(rumor, sk, peer)
 
       // Deux emballages : un pour le destinataire, un pour soi — sinon on ne
-      // relit pas ses propres MP. NIP-17 le prescrit, et la v1 l'avait déjà
-      // compris (« deux boîtes par message »).
+      // relit pas ses propres MP. NIP-17 le prescrit.
       const me = identity.pubkey!
       const wraps = await Promise.all([
         wrapWithPow(seal, peer, miner.difficulty.value),

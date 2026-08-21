@@ -36,7 +36,7 @@ export function reportTargetOf(
 }
 
 /**
- * Voix distinctes parmi des signalants (spec v2 §9.6).
+ * Voix distinctes parmi des signalants (spec §9.6).
  *
  * On construit le graphe « se suit, dans un sens ou dans l'autre » entre les
  * signalants — le graphe des kind 3, déjà chargé par le store social — et on en

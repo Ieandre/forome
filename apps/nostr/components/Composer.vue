@@ -185,7 +185,7 @@
  * juste après, en ligne, dismissible. L'utilisateur apprend qui il est au moment
  * où ça devient pertinent, sans qu'on lui ait fait payer un clic pour écrire.
  */
-import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
 import type { NostrEvent } from '~/types/nostr'
 import type { MarkupKind, BlockKind } from '~/utils/serialize'
 import { imetaTags, type ImageMeta } from '~/utils/media'
@@ -250,37 +250,24 @@ function onEditorInput(value: string): void {
 
 /* ----------------------------------------------------------------- repli
  *
- * Sur un téléphone, le composeur déplié occupait 261 px des 734 de l'écran :
- * autant que le fil. Il les prenait pour une intention qu'on n'a pas encore eue,
- * puisque au repos une barre d'outils et un bouton « Poster » ne servent à
- * personne. Replié, il tient sur une ligne et rend ~210 px à la lecture.
+ * Un composeur AU REPOS occupait la place d'un composeur EN COURS D'ÉCRITURE :
+ * 224 px de barre d'outils, d'identité et de bouton « Poster » pour une
+ * intention qu'on n'a pas encore eue. Sur un téléphone c'était la moitié de
+ * l'écran ; sur un portable de 812 px, 30 % du panneau, et le fil ne montrait
+ * plus que quatre messages — un seul dès qu'il y a une image.
  *
- * Il ne se referme JAMAIS sur du contenu : brouillon, image jointe, tiroir
- * ouvert ou réponse ciblée le retiennent ouvert. Un tap à côté ne doit pas
- * pouvoir escamoter un texte qu'on vient d'écrire — et replié sur un brouillon,
- * la ligne affiche justement ce brouillon (l'éditeur reste monté, on ne masque
- * que le chrome autour).
+ * Replié, il tient sur une ligne et se déplie au focus. Sur TOUS les écrans :
+ * le raisonnement ne dépend pas de la taille, seule son urgence en dépend. Ce
+ * qui disparaît au repos, ce sont les outils, pas la porte — une ligne
+ * « ta réponse » reste une invitation à répondre.
+ *
+ * Il ne se referme JAMAIS sur ce qu'une ligne ne peut pas montrer : image
+ * jointe, dépôt en cours, tiroir ouvert, réponse ciblée. Un brouillon en texte,
+ * lui, ne le retient pas — la ligne l'affiche (l'éditeur reste monté, on ne
+ * masque que le chrome autour).
  */
 const expanded = ref(false)
-
-/**
- * Vrai là où le composeur déplié mange la moitié de l'écran : le téléphone en
- * portrait, et le téléphone en PAYSAGE — 844 px de large, 390 de haut, qu'une
- * requête de largeur seule prend pour un grand écran.
- */
-const compact = ref(false)
-let compactMql: MediaQueryList | null = null
-function readCompact(): void {
-  compact.value = compactMql?.matches ?? false
-}
-onMounted(() => {
-  compactMql = window.matchMedia('(max-width: 700px), (max-height: 560px)')
-  readCompact()
-  compactMql.addEventListener('change', readCompact)
-})
-onUnmounted(() => compactMql?.removeEventListener('change', readCompact))
-
-const collapsed = computed(() => compact.value && !expanded.value)
+const collapsed = computed(() => !expanded.value)
 
 /**
  * Ce qu'un repli escamoterait, et qui le retient donc ouvert.
@@ -330,8 +317,17 @@ function onFocusOut(e: FocusEvent): void {
 
 const nsec = computed(() => identity.exportNsec() ?? '(clé dans une extension NIP-07)')
 
+/**
+ * L'encart propose de choisir un pseudo : il n'a rien à dire à quelqu'un qui en
+ * a déjà un (kind 0), qu'il l'ait choisi ici ou dans une autre app Nostr.
+ */
 const showEncart = computed(
-  () => identity.postCount === 1 && !identity.encartSeen && identity.signerMode === 'local',
+  () =>
+    identity.postCount === 1 &&
+    !identity.encartSeen &&
+    identity.signerMode === 'local' &&
+    !!identity.pubkey &&
+    !profiles.isClaimedName(identity.pubkey),
 )
 
 /**

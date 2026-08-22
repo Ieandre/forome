@@ -1,7 +1,9 @@
 [Unit]
-Description=Forome - indexeur (tick kind 30078)
+Description=Forome - indexeur (tick + points, kind 30078)
 # Le tick doit viser NOTRE relais : RELAYS est posé dans indexer.env par
 # install.sh — sans ce fichier, le défaut du code vise les relais publics.
+# Le même fichier porte POINTS_STATE : le score des membres est cumulatif, il
+# doit vivre hors du dépôt (~/forome-data) pour survivre au déploiement.
 After=forome-strfry.service
 Wants=forome-strfry.service
 

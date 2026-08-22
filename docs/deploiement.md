@@ -22,6 +22,7 @@ déploiement d'écraser le dépôt sans rien perdre :
 ```
 ~/forome-data/indexer.env     # la nsec de l'indexeur (chmod 600, jamais versionnée)
 ~/forome-data/indexer.pubkey
+~/forome-data/points.json     # le score des membres (spec §16) — cache, pas source
 ~/forome-data/web.env         # NUXT_PUBLIC_* — la seule source de vérité pour l'hôte
 ~/forome-data/strfry-db/
 ~/forome-data/backups/        # les dumps du relais (voir « Sauvegardes »)
@@ -226,7 +227,12 @@ se rejoue sans risque, et se fusionne dans une base qui a déjà du contenu. À
 relais arrêté : LMDB n'accepte qu'un écrivain, et le jour d'une restauration
 n'est pas celui où l'on essaie à chaud.
 
-**Ce que le dump ne contient pas :** `indexer.env`, la nsec de l'indexeur. Une
+**Ce que le dump ne contient pas :** `points.json`, et c'est voulu — le score
+est un pli sur les events, donc le dump du relais *est* sa sauvegarde. Le rejouer
+demande de le faire par `created_at` croissant (spec §16.7) ; à défaut, un forum
+qui repartirait d'un dump verrait les scores redémarrer, pas les messages.
+
+**Ce que le dump ne contient pas non plus :** `indexer.env`, la nsec de l'indexeur. Une
 clé n'a rien à faire dans une archive qui tourne toute seule chaque nuit — à
 copier une fois, à la main, là où tu gardes tes secrets. La perdre coûte une
 identité d'indexeur à regénérer (`install.sh` en refait une, et le client

@@ -54,6 +54,16 @@ npm run build
 # muet, et `is-active` qui l'attrape entre deux et annonce « OK ».
 bash "$ROOT/deploy/render-relay-conf.sh"
 
+# POINTS_STATE arrive par un déploiement ordinaire, et pas seulement par
+# install.sh : celui-ci ne se rejoue pas sur une VM en service, donc sans cette
+# ligne le score des membres irait vivre DANS le dépôt — à côté du
+# `git reset --hard` de la passe 1. Idempotent : on n'ajoute que ce qui manque,
+# et on ne réécrit jamais la nsec qui vit dans le même fichier.
+if [ -f "$DATA/indexer.env" ] && ! grep -q '^POINTS_STATE=' "$DATA/indexer.env"; then
+  echo "POINTS_STATE=$DATA/points.json" >> "$DATA/indexer.env"
+  echo "indexer.env : POINTS_STATE ajouté ($DATA/points.json)"
+fi
+
 sudo cp "$ROOT"/deploy/systemd/*.service "$ROOT"/deploy/systemd/*.timer /etc/systemd/system/
 sudo systemctl daemon-reload
 # Aussi ici, et pas seulement dans install.sh : install.sh ne se rejoue pas sur

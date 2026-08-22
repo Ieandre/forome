@@ -39,6 +39,9 @@ EOF
   cat > "$DATA/indexer.env" <<EOF
 INDEXER_NSEC=$NSEC
 RELAYS=ws://127.0.0.1:7777
+# Le score des membres vit ICI et pas dans le dépôt : update.sh fait
+# `git reset --hard`, qui remettrait le forum à zéro à chaque déploiement.
+POINTS_STATE=$DATA/points.json
 EOF
   chmod 600 "$DATA/indexer.env"
   echo "$PUBKEY" > "$DATA/indexer.pubkey"

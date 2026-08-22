@@ -28,7 +28,7 @@
  */
 import { defineStore } from 'pinia'
 import { computed, ref, shallowRef } from 'vue'
-import { levelOf as levelForPoints, levelProgress } from '@forome/points'
+import { levelOf as levelForPoints, levelProgress, shownPoints } from '@forome/points'
 import { decodeShard, pointsShardTags } from '@forome/points/payload'
 import type { PointsEntry } from '@forome/points/payload'
 import { KIND_APP_DATA } from '~/types/nostr'
@@ -36,16 +36,22 @@ import { tagValue } from '~/utils/nostr'
 import type { NostrEvent } from '~/types/nostr'
 import { useRelayStore } from '~/stores/relays'
 import { useTopicStore } from '~/stores/topics'
+import { useModerationStore } from '~/stores/moderation'
 
 export interface RankedEntry extends PointsEntry {
   /** Rang dans le classement, 1 en tête. Les ex æquo partagent leur rang. */
   rank: number
   level: number
+  /** Part gagnée par l'activité, telle que l'indexeur l'a comptée. */
+  earned: number
+  /** Part attribuée à la main par le staff (§16.8). */
+  granted: number
 }
 
 export const useUserPointsStore = defineStore('points', () => {
   const relayStore = useRelayStore()
   const topics = useTopicStore()
+  const mod = useModerationStore()
 
   /**
    * Un morceau par tag `d`, gardé tel qu'il est arrivé.
@@ -67,10 +73,47 @@ export const useUserPointsStore = defineStore('points', () => {
     return max
   })
 
+  /**
+   * Les deux sources, fusionnées : ce que l'indexeur a compté, plus ce que le
+   * staff a attribué (§16.8).
+   *
+   * Une clé peut n'exister que dans la seconde — quelqu'un récompensé pour un
+   * message unique n'est pas forcément dans le classement de l'indexeur. L'omettre
+   * ferait disparaître du classement la personne à qui on vient de rendre
+   * hommage, ce qui est le contraire exact du geste.
+   */
   const byKey = computed(() => {
     void rev.value
-    const out = new Map<string, PointsEntry>()
-    for (const s of shards.value.values()) for (const e of s.entries) out.set(e.pubkey, e)
+    const out = new Map<string, PointsEntry & { earned: number; granted: number }>()
+    for (const s of shards.value.values()) {
+      for (const e of s.entries) out.set(e.pubkey, { ...e, earned: e.points, granted: 0 })
+    }
+    for (const [pubkey, list] of mod.state.grants) {
+      let granted = 0
+      for (const g of list) granted += g.amount
+      if (granted === 0) continue
+      const known = out.get(pubkey)
+      if (known) {
+        known.granted = granted
+        // Le plancher est dans le code partagé, pas ici : l'aperçu du panneau
+        // d'attribution doit montrer EXACTEMENT ce nombre (§16.8).
+        known.points = shownPoints(known.earned, granted)
+      } else if (granted > 0) {
+        // Une clé que l'indexeur ne connaît pas et dont le solde attribué est
+        // négatif n'a rien à montrer : l'inscrire au classement à zéro l'y ferait
+        // entrer pour avoir été sanctionnée.
+        out.set(pubkey, {
+          pubkey,
+          points: granted,
+          earned: 0,
+          granted,
+          topics: 0,
+          replies: 0,
+          activeDays: 0,
+          lastDay: 0,
+        })
+      }
+    }
     return out
   })
 
@@ -80,7 +123,19 @@ export const useUserPointsStore = defineStore('points', () => {
    * pas branché » ne se ressemblent pas, et un « niveau 1 » affiché faute
    * d'indexeur serait un mensonge tranquille.
    */
-  const available = computed(() => Boolean(topics.indexerPubkey) && byKey.value.size > 0)
+  /**
+   * true quand on a de quoi afficher quelque chose. L'interface s'y accroche
+   * plutôt qu'à `points === 0` : « personne n'a de score » et « le score n'est
+   * pas branché » ne se ressemblent pas, et un « niveau 1 » affiché faute
+   * d'indexeur serait un mensonge tranquille.
+   *
+   * Une attribution suffit, même sans indexeur : elle vit dans un event signé,
+   * elle est donc au moins aussi sûre que le reste — et c'est le cas où
+   * l'indexeur est tombé mais où une distinction publique existe.
+   */
+  const available = computed(
+    () => (Boolean(topics.indexerPubkey) || mod.state.grants.size > 0) && byKey.value.size > 0,
+  )
 
   /** Le classement complet, rangs calculés. Les ex æquo partagent leur rang. */
   const ranking = computed<RankedEntry[]>(() => {
@@ -112,6 +167,16 @@ export const useUserPointsStore = defineStore('points', () => {
 
   function pointsOf(pubkey: string): number {
     return byKey.value.get(pubkey)?.points ?? 0
+  }
+
+  /** La part gagnée par l'activité seule. */
+  function earnedOf(pubkey: string): number {
+    return byKey.value.get(pubkey)?.earned ?? 0
+  }
+
+  /** La part attribuée par le staff, motifs à l'appui via `mod.grantsFor`. */
+  function grantedOf(pubkey: string): number {
+    return byKey.value.get(pubkey)?.granted ?? 0
   }
 
   /** `null` quand on ne sait pas — jamais 1 par défaut (voir `available`). */
@@ -165,6 +230,8 @@ export const useUserPointsStore = defineStore('points', () => {
     ranking,
     entryOf,
     pointsOf,
+    earnedOf,
+    grantedOf,
     levelOf,
     progressOf,
     rankOf,

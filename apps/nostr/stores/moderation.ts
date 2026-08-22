@@ -25,11 +25,17 @@ import {
   purgedEvents,
   STAFF_D_TAG,
   MODERATION_D_TAG,
+  GRANTS_D_TAG,
+  MAX_GRANTS_PER_LIST,
+  MAX_GRANT_AMOUNT,
+  grantedPoints,
   MAX_ACTIONS_PER_LIST,
   MAX_REASON_LEN,
   normalizePubkey,
   type ModerationState,
   type ModAction,
+  type PointGrant,
+  type AppliedGrant,
   type AppliedAction,
   type ActionType,
   type HideClass,
@@ -68,6 +74,7 @@ function emptyState(): ModerationState {
     locked: new Map(),
     pinned: new Map(),
     ignored: new Map(),
+    grants: new Map(),
   }
 }
 
@@ -152,8 +159,11 @@ export const useModerationStore = defineStore('moderation', () => {
     const authors = [...state.value.staff.keys()]
     if (authors.length === 0) return
     staffSub?.close()
+    // Les deux listes d'un membre du staff arrivent par la même souscription :
+    // même kind, mêmes auteurs, et `#d` accepte plusieurs valeurs. Une seconde
+    // souscription ne ferait qu'un aller-retour de plus pour le même résultat.
     staffSub = relayStore.subscribe(
-      { kinds: [KIND_APP_DATA], authors, '#d': [MODERATION_D_TAG] },
+      { kinds: [KIND_APP_DATA], authors, '#d': [MODERATION_D_TAG, GRANTS_D_TAG] },
       { onevent: ingest },
       'mod-actions',
     )
@@ -179,7 +189,7 @@ export const useModerationStore = defineStore('moderation', () => {
         const lists = await relayStore.query({
           kinds: [KIND_APP_DATA],
           authors,
-          '#d': [MODERATION_D_TAG],
+          '#d': [MODERATION_D_TAG, GRANTS_D_TAG],
         })
         for (const ev of lists) ingest(ev)
       }
@@ -303,6 +313,122 @@ export const useModerationStore = defineStore('moderation', () => {
       return []
     }
   })
+
+  /* ------------------------------------------------- attributions de points */
+
+  /** Mes propres attributions — c'est cette liste que je republie. */
+  const myGrants = computed<PointGrant[]>(() => {
+    const me = identity.pubkey
+    if (!me) return []
+    const ev = chain.value.get(`${me}:${GRANTS_D_TAG}`)
+    if (!ev) return []
+    try {
+      const body = JSON.parse(ev.content) as { grants?: PointGrant[] }
+      return Array.isArray(body.grants) ? body.grants : []
+    } catch {
+      return []
+    }
+  })
+
+  /** Les attributions reçues par une clé, la plus récente d'abord. Publiques. */
+  function grantsFor(pubkey: string): AppliedGrant[] {
+    return state.value.grants.get(pubkey) ?? []
+  }
+
+  /** Total attribué à la main à cette clé. */
+  function grantedFor(pubkey: string): number {
+    return grantedPoints(state.value, pubkey)
+  }
+
+  /** Tout ce qui a été attribué, du plus récent au plus ancien — pour le panneau. */
+  const grantLog = computed<AppliedGrant[]>(() => {
+    const out: AppliedGrant[] = []
+    for (const list of state.value.grants.values()) out.push(...list)
+    return out.sort((a, b) => b.at - a.at)
+  })
+
+  /**
+   * Republie ma liste d'attributions. Même garde-fou que `publishActions` : sans
+   * lecture réussie on ne publie pas, sinon on effacerait ce qu'on n'a pas lu —
+   * y compris ce qu'on a donné depuis un autre appareil.
+   */
+  async function publishGrants(grants: PointGrant[]): Promise<boolean> {
+    if (!loaded.value) {
+      lastError.value = 'état de modération non chargé — publication refusée pour ne pas l’écraser'
+      return false
+    }
+    if (!amStaff.value) {
+      lastError.value = 'cette clé n’est pas au roster'
+      return false
+    }
+    if (grants.length > MAX_GRANTS_PER_LIST) {
+      lastError.value = `liste pleine (${MAX_GRANTS_PER_LIST} attributions)`
+      return false
+    }
+    publishing.value = true
+    lastError.value = null
+    try {
+      const me = identity.pubkey ?? ''
+      const at = nextStamp(chain.value.get(`${me}:${GRANTS_D_TAG}`)?.created_at)
+      const outcome = await usePublisher().publishAppData(GRANTS_D_TAG, { v: 1, at, grants }, at)
+      return !!outcome && outcome.result.accepted.length > 0
+    } finally {
+      publishing.value = false
+    }
+  }
+
+  /**
+   * Attribue — ou retire — des points. `amount` est signé.
+   *
+   * Le motif est **obligatoire** ici alors que la lecture l'accepte vide : c'est
+   * le seul moment où on peut expliquer pourquoi on refuse, et un motif est ce
+   * qui sépare une décision d'un passe-droit. Il compte encore plus sur un
+   * retrait, qui s'affiche aussi sur le profil de la personne.
+   *
+   * S'attribuer des points à soi-même est permis (§16.8) : signé, public et
+   * motivé, ce n'est pas l'auto-crédit invisible que le pli automatique
+   * interdit. L'interface le nomme comme tel.
+   */
+  async function grant(input: string, amount: number, reason: string): Promise<boolean> {
+    const target = normalizePubkey(input)
+    if (!target) {
+      lastError.value = 'clé illisible — une npub ou 64 caractères hexadécimaux'
+      return false
+    }
+    // `trunc` : sur un retrait, `floor` retirerait un point de plus que demandé.
+    const n = Math.trunc(amount)
+    if (!Number.isFinite(n) || n === 0) {
+      lastError.value = 'un nombre de points, positif pour donner, négatif pour retirer'
+      return false
+    }
+    if (Math.abs(n) > MAX_GRANT_AMOUNT) {
+      lastError.value = `${MAX_GRANT_AMOUNT.toLocaleString('fr-FR')} points au maximum par opération`
+      return false
+    }
+    const trimmed = reason.trim().slice(0, MAX_REASON_LEN)
+    if (!trimmed) {
+      lastError.value = 'motif obligatoire — il s’affiche sur le profil, c’est lui qui fait la récompense'
+      return false
+    }
+    return publishGrants([...myGrants.value, { target, amount: n, reason: trimmed, at: nowS() }])
+  }
+
+  /**
+   * Annule une de MES lignes — récompense ou retrait. Annuler, c'est republier la
+   * liste sans la ligne, donc on ne peut pas défaire celle d'un autre.
+   *
+   * Ce n'est pas une limite : **corriger** l'attribution d'un autre modérateur se
+   * fait en posant un retrait dans sa propre liste, puisque tout se somme
+   * (§16.8). Annuler retire sa propre trace, corriger en ajoute une.
+   */
+  async function ungrant(target: string, at: number): Promise<boolean> {
+    const next = myGrants.value.filter((g) => !(g.target === target && g.at === at))
+    if (next.length === myGrants.value.length) {
+      lastError.value = 'cette attribution n’est pas dans ta liste'
+      return false
+    }
+    return publishGrants(next)
+  }
 
   /** File des signalements, triée par voix distinctes (§9.6). */
   const reportQueue = computed(() => {
@@ -506,6 +632,10 @@ export const useModerationStore = defineStore('moderation', () => {
     amAdmin,
     journal,
     myActions,
+    myGrants,
+    grantLog,
+    grantsFor,
+    grantedFor,
     reportQueue,
     relayState,
     toPurge,
@@ -535,5 +665,7 @@ export const useModerationStore = defineStore('moderation', () => {
     appoint,
     revoke,
     report,
+    grant,
+    ungrant,
   }
 })

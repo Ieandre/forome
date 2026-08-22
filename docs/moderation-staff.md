@@ -188,6 +188,46 @@ pourrait la corriger — donc un modérateur en vacances bloquerait une erreur.
 désaccord se bannissent mutuellement et l'état effectif dépend de qui a publié en
 dernier. Seul un admin retire quelqu'un, et ça passe par le roster.
 
+### 3.5 Les attributions de points — une liste par modérateur, aussi
+
+Un **kind 30078**, `d` = `forome.points.grants`, **une liste remplaçable par clé
+de staff** : même forme que les actions, et pour une raison de fond — récompenser
+à la main est une décision signée par une autorité épinglée, pas un pli sur du
+contenu.
+
+```json
+{
+  "v": 1,
+  "at": 1800000000,
+  "grants": [
+    { "target": "<clé récompensée>", "amount": 500, "reason": "meilleur topic de l'année", "at": 1800000000 }
+  ]
+}
+```
+
+Le raisonnement complet est dans la spec (§16.8). Ce qui change pour toi, en
+pratique :
+
+- **c'est TA clé de staff qui signe**, jamais la clé racine — elle reste froide ;
+- **`amount` est signé** : positif pour donner, négatif pour retirer. Le panneau
+  te fait choisir un sens, tu ne tapes jamais le moins toi-même ;
+- **annuler = republier ta liste sans la ligne**, donc tu ne peux défaire que tes
+  propres lignes. Pour **corriger** celle d'un autre, pose un retrait dans la
+  tienne : tout se somme ;
+- **tout est public**, motif compris, sur le profil de la personne — un retrait
+  autant qu'une récompense. Un motif vide est refusé à l'écriture ;
+- **t'attribuer des points à toi-même est permis**, et s'affiche « par
+  soi-même ». Ce n'est pas un oubli : signé, public et motivé, ça se voit et ça se
+  révoque ;
+- le **score affiché ne descend jamais sous zéro**, même si tu retires plus que
+  ce que la personne a. Le panneau te le dit avant que tu signes ;
+- se faire **révoquer efface tout** ce que tu as donné ou retiré, comme pour tes
+  décisions.
+
+Le panneau (`/admin`, onglet **Points**) montre le passage de niveau avant que tu
+signes. C'est la seule partie non évidente du geste : « +500 » ne dit rien, « du
+niveau 4 au niveau 6 » dit tout.
+
 ## 4. Les pouvoirs
 
 | type | cible | effet dans notre client | effet au relais |
@@ -198,6 +238,7 @@ dernier. Seul un admin retire quelqu'un, et ça passe par le roster.
 | `lock` | id de topic | composeur fermé, bandeau explicatif | **refus des réponses** |
 | `pin` | id de topic | en tête de la liste, marqueur `épinglé` | aucun |
 | `ignore` | id d'event ou clé | classe un signalement sans suite | aucun |
+| *attribution* | clé publique | **ajoute ou retire** des points, motif affiché sur le profil (§3.5) | aucun |
 
 Le **motif est obligatoire** sur toutes. Une action sans motif est une censure
 silencieuse avec une signature dessus — le §9.2 la refuse autant que l'autre.

@@ -329,6 +329,199 @@ npm run dev:nostr</pre>
         </form>
       </section>
 
+      <!-- ======================================================== points -->
+      <section v-else-if="tab === 'points'" class="adm__page">
+        <header class="adm__pagehead">
+          <div>
+            <h1 class="adm__title">Points</h1>
+            <p class="adm__sub">
+              Corriger à la main ce que le barème ne sait pas voir — dans les deux sens. Chaque
+              opération est <strong>publique</strong> : le motif s'affiche sur le profil de la
+              personne, signé par ta clé. C'est ce qui en fait une décision plutôt qu'un
+              passe-droit, et ça vaut aussi quand la clé visée est la tienne.
+            </p>
+          </div>
+        </header>
+
+        <form class="adm__grant" @submit.prevent="doGrant">
+          <!-- Un SENS, pas un signe à taper. Un champ nombre où l'on saisit
+               « -200 » invite le « -0 », le double moins et la faute qu'on ne
+               relit pas — sur un geste irréversible côté réseau, c'est cher. -->
+          <div class="adm__grant-sens" role="radiogroup" aria-label="donner ou retirer">
+            <button
+              type="button"
+              class="adm__sens"
+              :class="{ 'adm__sens--on': grantSign === 1 }"
+              :aria-pressed="grantSign === 1"
+              @click="grantSign = 1"
+            >
+              Donner
+            </button>
+            <button
+              type="button"
+              class="adm__sens"
+              :class="{ 'adm__sens--on': grantSign === -1, 'adm__sens--retrait': grantSign === -1 }"
+              :aria-pressed="grantSign === -1"
+              @click="grantSign = -1"
+            >
+              Retirer
+            </button>
+          </div>
+
+          <div class="adm__grant-row">
+            <label class="adm__grant-field adm__grant-field--who">
+              <span class="adm__grant-label">À qui</span>
+              <input
+                v-model="grantTo"
+                type="text"
+                class="adm__search adm__search--wide"
+                placeholder="npub… (bouton « copier » sur son profil)"
+                required
+              />
+            </label>
+            <label class="adm__grant-field adm__grant-field--howmuch">
+              <span class="adm__grant-label">Combien</span>
+              <input
+                v-model.number="grantAmount"
+                type="number"
+                class="adm__search mono"
+                min="1"
+                :max="MAX_GRANT_AMOUNT"
+                required
+              />
+            </label>
+          </div>
+
+          <div class="adm__grant-presets">
+            <button
+              v-for="p in GRANT_PRESETS"
+              :key="p"
+              type="button"
+              class="adm__preset mono"
+              :class="{ 'adm__preset--on': grantAmount === p }"
+              @click="grantAmount = p"
+            >
+              +{{ p }}
+            </button>
+          </div>
+
+          <label class="adm__grant-field">
+            <span class="adm__grant-label">Pourquoi</span>
+            <input
+              v-model="grantReason"
+              type="text"
+              class="adm__search adm__search--wide"
+              :maxlength="MAX_REASON_LEN"
+              placeholder="le meilleur topic de l'année"
+              required
+            />
+          </label>
+
+          <!-- La conséquence avant la signature, comme le bloc de révocation
+               juste à côté : sur un réseau sans suppression, « ce que ça va
+               faire » vaut mieux que « ce que ça a fait ». -->
+          <p
+            v-if="grantPreview"
+            class="adm__grant-preview"
+            :class="{ 'adm__grant-preview--retrait': grantSign === -1 }"
+          >
+            <strong>{{ grantPreview.name }}</strong>
+            <span class="mono">·{{ grantPreview.disc }}</span> passe de
+            <span class="mono">{{ grantPreview.before.toLocaleString('fr-FR') }}</span> à
+            <span class="mono">{{ grantPreview.after.toLocaleString('fr-FR') }}</span> points
+            <template v-if="grantPreview.levelAfter !== grantPreview.levelBefore">
+              — et du niveau <span class="mono">{{ grantPreview.levelBefore }}</span> au niveau
+              <strong class="mono">{{ grantPreview.levelAfter }}</strong>
+            </template>
+            <template v-else>
+              — il reste au niveau <span class="mono">{{ grantPreview.levelAfter }}</span>
+            </template>
+            <!-- Le plancher est dit, pas subi : sans cette phrase, retirer 800 à
+                 quelqu'un qui en a 300 donnerait l'impression d'avoir marché.
+                 Phrase à part et non ponctuation collée : un point précédé d'un
+                 saut de ligne dans le gabarit se rend « niveau 1 . Le score ». -->
+            <template v-if="grantPreview.floored">
+              <br />
+              Le score s'arrête à zéro : c'est
+              <span class="mono">{{ grantPreview.excess.toLocaleString('fr-FR') }}</span> de plus
+              que ce qu'il a.
+            </template>
+            <template v-if="grantPreview.self">
+              <br />
+              C'est ta propre clé — l'attribution s'affichera « par soi-même » sur ton profil.
+            </template>
+          </p>
+          <p v-else-if="grantTo.trim()" class="adm__grant-preview adm__grant-preview--bad">
+            Cette adresse ne contient pas de clé lisible.
+          </p>
+
+          <div class="adm__grant-actions">
+            <button
+              type="submit"
+              class="btn btn--sm"
+              :class="grantSign === -1 ? 'btn--danger' : 'btn--primary'"
+              :disabled="mod.publishing || !grantPreview"
+            >
+              {{ mod.publishing ? 'Publication…' : grantSign === -1 ? 'Retirer' : 'Attribuer' }}
+            </button>
+            <span class="adm__grant-hint">
+              {{ mod.myGrants.length }}/{{ MAX_GRANTS_PER_LIST }} dans ta liste
+            </span>
+          </div>
+          <p v-if="mod.lastError" class="adm__error">{{ mod.lastError }}</p>
+        </form>
+
+        <h2 class="adm__h2">Attribué</h2>
+        <p v-if="mod.grantLog.length === 0" class="adm__grant-empty">
+          Rien encore. La première attribution est aussi la première fois que quelqu'un verra une
+          distinction sur son profil.
+        </p>
+        <table v-else class="adm__table">
+          <thead>
+            <tr>
+              <th scope="col">À qui</th>
+              <th scope="col" class="adm__num">Points</th>
+              <th scope="col">Motif</th>
+              <th scope="col">Par</th>
+              <th scope="col">Quand</th>
+              <th scope="col"><span class="visually-hidden">Annuler</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="g in mod.grantLog" :key="`${g.by}:${g.target}:${g.at}`">
+              <td>
+                <NuxtLink :to="`/profil/${npubFor(g.target)}`" class="adm__member-name">
+                  {{ profiles.displayName(g.target) }}
+                </NuxtLink>
+                <span class="adm__disc mono">·{{ profiles.discriminator(g.target) }}</span>
+              </td>
+              <td class="adm__num mono" :class="{ 'adm__retrait': g.amount < 0 }">
+                {{ g.amount > 0 ? '+' : '−' }}{{ Math.abs(g.amount).toLocaleString('fr-FR') }}
+              </td>
+              <td class="adm__grant-reason">{{ g.reason || '—' }}</td>
+              <td>
+                <span v-if="g.by === g.target" class="adm__disc mono">soi-même</span>
+                <span v-else class="adm__disc mono">·{{ profiles.discriminator(g.by) }}</span>
+              </td>
+              <td class="mono adm__grant-when">il y a {{ relativeTime(g.at) }}</td>
+              <td>
+                <!-- Annuler ne vaut que pour SA liste : une récompense n'est pas
+                     un état contesté, elle appartient à qui l'a donnée. -->
+                <button
+                  v-if="g.by === identity.pubkey"
+                  type="button"
+                  class="btn btn--sm btn--ghost"
+                  :disabled="mod.publishing"
+                  @click="doUngrant(g.target, g.at)"
+                >
+                  annuler
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
       <!-- ======================================================== relais -->
       <section v-else class="adm__page">
         <header class="adm__pagehead">
@@ -381,7 +574,16 @@ import {
   type ReportType,
   type ReportGroup,
 } from '~/types/moderation'
-import type { ActionType, AppliedAction, Role } from '@forome/relay-policy/moderation'
+import {
+  MAX_GRANT_AMOUNT,
+  MAX_GRANTS_PER_LIST,
+  MAX_REASON_LEN,
+  normalizePubkey,
+  type ActionType,
+  type AppliedAction,
+  type Role,
+} from '@forome/relay-policy/moderation'
+import { levelOf, shownPoints } from '@forome/points'
 import type { NostrEvent } from '~/types/nostr'
 
 usePageTitle('Modération')
@@ -392,8 +594,9 @@ const profiles = useProfileStore()
 const topics = useTopicStore()
 const relayStore = useRelayStore()
 const identity = useIdentityStore()
+const points = useUserPointsStore()
 
-type Tab = 'queue' | 'journal' | 'team' | 'relay'
+type Tab = 'queue' | 'journal' | 'team' | 'points' | 'relay'
 const tab = ref<Tab>('queue')
 
 const search = ref('')
@@ -424,8 +627,66 @@ const tabs = computed(() => [
   { id: 'queue' as const, label: 'Signalements', count: mod.reportQueue.length },
   { id: 'journal' as const, label: 'Journal', count: mod.journal.length },
   { id: 'team' as const, label: 'Équipe', count: 0 },
+  { id: 'points' as const, label: 'Points', count: mod.grantLog.length },
   { id: 'relay' as const, label: 'Relais', count: 0 },
 ])
+
+/* ---------------------------------------------------- attribution de points */
+
+/** Trois montants pour le geste courant. Le champ reste libre — c'est le propos. */
+const GRANT_PRESETS = [25, 100, 500] as const
+
+const grantTo = ref('')
+const grantAmount = ref(100)
+const grantReason = ref('')
+/** Le sens de l'opération. Le champ « combien » reste toujours positif. */
+const grantSign = ref<1 | -1>(1)
+
+/**
+ * Ce que l'attribution va faire, avant de la signer.
+ *
+ * Même raisonnement que le bloc de confirmation d'une révocation : sur un réseau
+ * sans suppression, montrer la conséquence coûte moins cher que la réparer. Et
+ * le passage de niveau est la seule partie non évidente — 500 points ne disent
+ * rien, « du niveau 4 au niveau 6 » dit tout.
+ */
+const grantPreview = computed(() => {
+  const target = normalizePubkey(grantTo.value)
+  if (!target) return null
+  const n = Math.trunc(Number(grantAmount.value))
+  const magnitude = Number.isFinite(n) && n > 0 ? Math.min(n, MAX_GRANT_AMOUNT) : 0
+  const delta = magnitude * grantSign.value
+  const before = points.pointsOf(target)
+  const brut = before + delta
+  // Le même plancher que le score affiché, par la même fonction : l'aperçu doit
+  // montrer ce que la personne verra, pas un calcul intermédiaire (§16.8).
+  const after = shownPoints(before, delta)
+  return {
+    name: profiles.displayName(target),
+    disc: profiles.discriminator(target),
+    before,
+    after,
+    levelBefore: levelOf(before),
+    levelAfter: levelOf(after),
+    floored: brut < 0,
+    excess: -brut,
+    self: target === identity.pubkey,
+  }
+})
+
+async function doGrant(): Promise<void> {
+  const magnitude = Math.abs(Math.trunc(Number(grantAmount.value)))
+  const ok = await mod.grant(grantTo.value, magnitude * grantSign.value, grantReason.value)
+  if (!ok) return
+  // On garde le montant : récompenser plusieurs personnes du même geste pour le
+  // même fait est le cas courant (un bon fil, trois participants).
+  grantTo.value = ''
+  grantReason.value = ''
+}
+
+async function doUngrant(target: string, at: number): Promise<void> {
+  await mod.ungrant(target, at)
+}
 
 /* --------------------------------------------------------------- la file */
 
@@ -1120,6 +1381,177 @@ watch(queue, (list) => {
   width: 100%;
   border-collapse: collapse;
   font-size: var(--fs-md);
+}
+/* Le journal n'a pas d'en-tête (ses colonnes se lisent d'elles-mêmes) ; la table
+   des attributions en a une, parce que « +500 » sans intitulé ne dit pas si
+   c'est un montant ou un total. */
+.adm__table th {
+  padding: 6px 8px;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  text-align: left;
+  color: var(--ink-4);
+  white-space: nowrap;
+}
+.adm__num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* -------------------------------------------------------------- attribution
+ * Un formulaire, pas une caisse : aucune pastille de prix, aucun aplat coloré,
+ * et le seul élément mis en avant est la CONSÉQUENCE (le passage de niveau).
+ */
+.adm__grant {
+  margin: 0 0 22px;
+  padding: 14px;
+  background: var(--surface-sunken);
+  border-radius: var(--r-control);
+}
+/* Le sens : un segmenté, dans la grammaire du sélecteur Topics/MP. Deux boutons
+   côte à côte plutôt qu'une case à cocher « retirer » — une case ne dit pas
+   laquelle des deux opérations est en cours quand on regarde le bouton d'envoi. */
+.adm__grant-sens {
+  display: inline-flex;
+  gap: 3px;
+  padding: 3px;
+  margin-bottom: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+  border-radius: 999px;
+}
+.adm__sens {
+  padding: 4px 13px;
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--ink-3);
+  background: none;
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.adm__sens--on {
+  color: var(--link);
+  background: var(--link-soft);
+}
+/* Retirer est la seule opération de cet écran qui enlève quelque chose à
+   quelqu'un : elle porte la couleur des états négatifs, pas celle de
+   l'interface. */
+.adm__sens--retrait.adm__sens--on {
+  color: var(--warn);
+  background: var(--warn-soft);
+}
+
+.adm__grant-preview--retrait {
+  border-left-color: var(--warn);
+}
+.adm__retrait {
+  color: var(--warn);
+}
+
+.adm__grant-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+}
+.adm__grant-field {
+  display: block;
+  min-width: 0;
+}
+.adm__grant-field--who {
+  flex: 1;
+}
+.adm__grant-field--howmuch {
+  width: 108px;
+  flex-shrink: 0;
+}
+.adm__grant-label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+}
+.adm__grant-field + .adm__grant-field,
+.adm__grant-presets + .adm__grant-field {
+  margin-top: 10px;
+}
+
+.adm__grant-presets {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+/* Trois raccourcis pour le geste courant. Le champ reste libre juste au-dessus :
+   ce sont des raccourcis, pas un tarif. */
+.adm__preset {
+  padding: 3px 9px;
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-3);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.adm__preset:hover {
+  color: var(--ink);
+  border-color: var(--line-strong);
+}
+.adm__preset--on {
+  color: var(--link);
+  border-color: var(--link);
+  background: var(--link-soft);
+}
+
+.adm__grant-preview {
+  margin: 12px 0 0;
+  padding: 9px 11px;
+  font-size: var(--fs-md);
+  line-height: 1.5;
+  color: var(--ink-2);
+  background: var(--surface);
+  border-radius: var(--r-pastille);
+  border-left: 3px solid var(--link);
+}
+.adm__grant-preview--bad {
+  color: var(--ink-4);
+  border-left-color: var(--line-strong);
+}
+.adm__grant-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+.adm__grant-hint {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--ink-4);
+}
+.adm__grant-empty {
+  margin: 4px 0 0;
+  font-size: var(--fs-md);
+  line-height: 1.55;
+  color: var(--ink-4);
+}
+.adm__grant-reason {
+  color: var(--ink);
+}
+.adm__grant-when {
+  font-size: 10.5px;
+  color: var(--ink-4);
+  white-space: nowrap;
+}
+
+@media (max-width: 560px) {
+  .adm__grant-row {
+    flex-wrap: wrap;
+  }
+  .adm__grant-field--howmuch {
+    width: 100%;
+  }
 }
 .adm__table td {
   padding: 9px 8px;

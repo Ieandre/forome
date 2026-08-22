@@ -22,7 +22,13 @@ import {
   MODERATION_D_TAG,
   MAX_REASON_LEN,
   normalizePubkey,
+  GRANTS_D_TAG,
+  MAX_GRANTS_PER_LIST,
+  MAX_GRANT_AMOUNT,
+  parseGrants,
+  grantedPoints,
   type ModAction,
+  type PointGrant,
 } from '../src/moderation.js'
 
 const rootSk = generateSecretKey()
@@ -248,5 +254,173 @@ describe('forme de la clé', () => {
       normalizePubkey(npubEncode(ROOT))!,
     )
     expect(blockedKeys(state)).toEqual(new Set([VICTIM]))
+  })
+})
+
+/**
+ * Attributions de points (spec §16.8).
+ *
+ * Ce qui est vérifié ici n'est pas de l'arithmétique : c'est qu'une récompense
+ * hérite bien des règles de la modération (révocation en bloc) sans hériter de
+ * celles qui n'ont pas de sens pour elle (le dernier gagne).
+ */
+describe('attributions de points', () => {
+  function grants(sk: Uint8Array, entries: Partial<PointGrant>[], at = NOW): Event {
+    return finalizeEvent(
+      {
+        kind: KIND_APP_DATA,
+        created_at: at,
+        tags: [['d', GRANTS_D_TAG]],
+        content: JSON.stringify({
+          v: 1,
+          at,
+          grants: entries.map((g) => ({ target: TARGET, amount: 100, reason: 'génial', at, ...g })),
+        }),
+      },
+      sk,
+    )
+  }
+
+  const staffRoster = roster(rootSk, [{ pubkey: MOD, role: 'moderator' }])
+
+  it('additionne au lieu de remplacer : trois distinctions valent trois lignes', () => {
+    const state = deriveState(
+      [staffRoster, grants(modSk, [{ amount: 100 }, { amount: 50 }, { amount: 7 }])],
+      ROOT,
+    )
+    expect(state.grants.get(TARGET)).toHaveLength(3)
+    expect(grantedPoints(state, TARGET)).toBe(157)
+  })
+
+  it('nomme qui a donné — une récompense anonyme ne récompense rien', () => {
+    const state = deriveState([staffRoster, grants(modSk, [{}])], ROOT)
+    expect(state.grants.get(TARGET)?.[0]?.by).toBe(MOD)
+    expect(state.grants.get(TARGET)?.[0]?.reason).toBe('génial')
+  })
+
+  /** Règle 1, héritée : c'est ce qui rend une révocation totale d'un seul geste. */
+  it("oublie tout ce qu'a donné une clé retirée du roster", () => {
+    const avant = deriveState([staffRoster, grants(modSk, [{}])], ROOT)
+    expect(grantedPoints(avant, TARGET)).toBe(100)
+
+    const rosterVide = roster(rootSk, [], NOW + 10)
+    const apres = deriveState([staffRoster, rosterVide, grants(modSk, [{}])], ROOT)
+    expect(grantedPoints(apres, TARGET)).toBe(0)
+  })
+
+  it("ne compte pas la liste d'un inconnu", () => {
+    const state = deriveState([staffRoster, grants(strangerSk, [{}])], ROOT)
+    expect(grantedPoints(state, TARGET)).toBe(0)
+  })
+
+  /**
+   * Permis, à la différence de l'auto-crédit du pli automatique : celui-ci est
+   * invisible et farmable, celui-ci est signé, public et motivé. Le garde-fou
+   * n'est pas une règle de dérivation, c'est le roster.
+   */
+  it("accepte qu'une clé de staff s'attribue des points, et le dit", () => {
+    const state = deriveState([staffRoster, grants(modSk, [{ target: MOD }, { target: TARGET }])], ROOT)
+    expect(grantedPoints(state, MOD)).toBe(100)
+    expect(state.grants.get(MOD)?.[0]?.by).toBe(MOD)
+    expect(grantedPoints(state, TARGET)).toBe(100)
+  })
+
+  it("oublie l'auto-attribution d'une clé révoquée, comme le reste", () => {
+    const rosterVide = roster(rootSk, [], NOW + 10)
+    const state = deriveState([staffRoster, rosterVide, grants(modSk, [{ target: MOD }])], ROOT)
+    expect(grantedPoints(state, MOD)).toBe(0)
+  })
+
+  it('annule en republiant la liste sans la ligne', () => {
+    const posee = grants(modSk, [{ amount: 500 }])
+    const retiree = grants(modSk, [], NOW + 60)
+    const state = deriveState([staffRoster, posee, retiree], ROOT)
+    expect(grantedPoints(state, TARGET)).toBe(0)
+  })
+
+  it('rejette ce qui rendrait un niveau incalculable, garde le reste', () => {
+    const state = deriveState(
+      [
+        staffRoster,
+        grants(modSk, [
+          { amount: 0 },
+          { amount: MAX_GRANT_AMOUNT + 1 },
+          { amount: -MAX_GRANT_AMOUNT - 1 },
+          { amount: Number.POSITIVE_INFINITY },
+          { amount: 12.9 },
+        ]),
+      ],
+      ROOT,
+    )
+    // Seul le 12,9 survit, tronqué — les quatre autres sortiraient la courbe des
+    // niveaux de l'ensemble des nombres. Zéro est refusé aussi : une attribution
+    // qui ne change rien n'est pas une décision.
+    expect(grantedPoints(state, TARGET)).toBe(12)
+  })
+
+  /* ------------------------------------------------------------- retraits */
+
+  it('retire des points, dans la même liste et par la même somme', () => {
+    const state = deriveState(
+      [staffRoster, grants(modSk, [{ amount: 500 }, { amount: -200, reason: 'spam' }])],
+      ROOT,
+    )
+    expect(grantedPoints(state, TARGET)).toBe(300)
+    expect(state.grants.get(TARGET)).toHaveLength(2)
+  })
+
+  /** C'est ce qui rend le retrait utile : corriger la générosité d'un autre. */
+  it('laisse un modérateur corriger l’attribution d’un autre', () => {
+    const deux = roster(rootSk, [
+      { pubkey: MOD, role: 'moderator' },
+      { pubkey: MOD2, role: 'moderator' },
+    ])
+    const state = deriveState(
+      [
+        deux,
+        grants(modSk, [{ amount: 5000, reason: 'copinage' }]),
+        grants(mod2Sk, [{ amount: -5000, reason: 'annulation du copinage' }]),
+      ],
+      ROOT,
+    )
+    expect(grantedPoints(state, TARGET)).toBe(0)
+  })
+
+  /** `floor(-12.9)` aurait retiré un point de plus que ce qui a été signé. */
+  it('tronque un retrait vers zéro, jamais vers le bas', () => {
+    const state = deriveState([staffRoster, grants(modSk, [{ amount: -12.9 }])], ROOT)
+    expect(grantedPoints(state, TARGET)).toBe(-12)
+  })
+
+  it('laisse le total attribué devenir négatif — c’est au client de le plancher', () => {
+    const state = deriveState([staffRoster, grants(modSk, [{ amount: -800 }])], ROOT)
+    expect(grantedPoints(state, TARGET)).toBe(-800)
+  })
+
+  /** Strict à l'écriture, large à la lecture : un rejet muet n'apprend rien. */
+  it('accepte un motif vide plutôt que de perdre l’attribution en silence', () => {
+    const state = deriveState([staffRoster, grants(modSk, [{ reason: '   ' }])], ROOT)
+    expect(grantedPoints(state, TARGET)).toBe(100)
+    expect(state.grants.get(TARGET)?.[0]?.reason).toBe('')
+  })
+
+  it('borne la longueur du motif comme celle des actions', () => {
+    const state = deriveState([staffRoster, grants(modSk, [{ reason: 'x'.repeat(500) }])], ROOT)
+    expect(state.grants.get(TARGET)?.[0]?.reason).toHaveLength(MAX_REASON_LEN)
+  })
+
+  it('borne le nombre de lignes par liste', () => {
+    const many = Array.from({ length: MAX_GRANTS_PER_LIST + 40 }, () => ({ amount: 1 }))
+    const state = deriveState([staffRoster, grants(modSk, many)], ROOT)
+    expect(grantedPoints(state, TARGET)).toBe(MAX_GRANTS_PER_LIST)
+  })
+
+  it('refuse ce qui n’est pas une liste d’attributions', () => {
+    const ev = finalizeEvent(
+      { kind: KIND_APP_DATA, created_at: NOW, tags: [['d', GRANTS_D_TAG]], content: 'pas du json' },
+      modSk,
+    )
+    expect(parseGrants(ev)).toBeNull()
+    expect(grantedPoints(deriveState([staffRoster, ev], ROOT), TARGET)).toBe(0)
   })
 })

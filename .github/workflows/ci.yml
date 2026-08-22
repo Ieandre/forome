@@ -51,6 +51,13 @@ jobs:
       - name: Smoke de la policy
         run: npm run smoke:policy
 
+      # Annuler une attribution de points repose entièrement sur le REMPLACEMENT
+      # d'un event adressable par le relais. Aucun test unitaire ne le voit — et
+      # une attribution qu'on croit annulée continuerait à compter en silence sur
+      # le profil de quelqu'un. Ce smoke ne demande qu'un relais Node.
+      - name: Smoke des attributions de points
+        run: npm run smoke:points
+
       # Ne produit aucun artefact déployable : avec ssr:false les NUXT_PUBLIC_*
       # sont cuits dans le HTML au build, et ils vivent sur la VM. Ce build
       # prouve seulement qu'il passe ; c'est la VM qui rebuild avec sa config.

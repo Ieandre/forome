@@ -1149,6 +1149,10 @@ qu'un bouton.
   en durée minimale** — aucune activité, aucun CPU loué et aucune collusion ne va
   plus vite, donc le niveau 20 réclame au moins 119 jours *quoi qu'on fasse*.
   C'est ce qui rend un niveau élevé lisible.
+  **Une seule chose passe outre, et c'est assumé** : les attributions à la main du
+  §16.8. Le niveau n'est donc pas une durée pure, c'est *durée **ou**
+  reconnaissance* — et les deux se distinguent à l'écran, un profil disant
+  toujours quelle part a été donnée.
 - **un seul crédit par couple** (qui crédite, ce qui est crédité) : le pote qui
   répond cinquante fois compte une fois.
 - **seuil pour créditer : 10 points.** Une clé neuve ne fabrique pas de valeur,
@@ -1199,9 +1203,15 @@ le même sens :
    Le rôle des points est de **rendre la contribution visible**, qui est une
    fonction culturelle (§15.3). Les mélanger abîmerait les deux.
 
-Corollaire : les points ne descendent jamais. Un nombre qui baisse rend le forum
-anxiogène et l'archive instable ; une clé bannie cesse simplement de gagner,
-puisque le relais refuse ses events avant stockage (§9.5).
+Corollaire, valable pour **ce qui se gagne** : les points ne descendent jamais.
+Une clé bannie cesse simplement de gagner, puisque le relais refuse ses events
+avant stockage (§9.5) — rien ne se reprend rétroactivement.
+
+Le staff, lui, peut retirer des points à la main (§16.8). La distinction est
+nette et vaut d'être tenue : **le pli automatique est monotone, la décision
+humaine est réversible dans les deux sens.** Un score qui baisserait tout seul
+rendrait l'archive instable ; un score qu'une personne corrige, en signant et en
+motivant, est une décision comme un masquage.
 
 ### 16.6 À l'écran : le niveau est un mot, les points sont une métrique
 
@@ -1248,3 +1258,233 @@ de source serait un mensonge tranquille.
   d'où seize morceaux répartis par premier caractère de clé. Au-delà il faudra
   couper plus fin (deux caractères, 256 morceaux) — le format le permet, mais il
   faudra trancher qui reste au classement.
+
+### 16.8 Attribuer des points à la main
+
+Le barème ne sait voir que ce qui se compte. Il ne verra jamais le message qui a
+sauvé un fil, la réponse qui a appris quelque chose à trois cents personnes, ou
+le type qui a passé sa soirée à documenter un bug. D'où une attribution
+manuelle : le staff donne des points, autant qu'il veut, pour ce que le pli ne
+sait pas mesurer.
+
+**Ce n'est pas un pli, c'est une décision signée** — donc ça vit avec la
+modération (`packages/relay-policy/src/moderation.ts`) et pas avec les points.
+Une liste remplaçable par clé de staff (`d = forome.points.grants`), exactement
+comme la liste d'actions. Cette parenté n'est pas une commodité de rangement,
+elle donne quatre propriétés d'un coup :
+
+| | |
+|---|---|
+| **révocable** | annuler, c'est republier sa liste sans la ligne. Aucun contre-event à inventer, et une faute de frappe à 50 000 points se répare en dix secondes — sur un réseau sans suppression, c'est ce qui compte |
+| **annulée en bloc** | la règle 1 de `deriveState` s'applique : retirer une clé du roster efface tout ce qu'elle a donné, d'un geste |
+| **auditable** | le motif et la clé qui a signé voyagent avec les points, et s'affichent |
+| **durable** | elle vit dans un event signé, donc elle survit à une perte de l'état de l'indexeur — les points les plus chargés de sens sont aussi les moins périssables |
+
+Deux règles :
+
+1. seules comptent les attributions d'une clé **actuellement** au roster ;
+2. **ça s'additionne**, ça ne se remplace pas. Contrairement à tout le reste de
+   la modération, une attribution n'est pas un état : en recevoir trois, c'est
+   trois lignes sur un profil, pas la dernière qui gagne. C'est aussi ce qui
+   permet à un modérateur de **corriger la générosité d'un autre**, en posant un
+   retrait dans sa propre liste.
+
+**S'attribuer des points à soi-même est permis.** La première version l'a
+interdit, en miroir du « pas d'auto-crédit » du pli automatique. L'analogie était
+fausse : l'auto-crédit est interdit là-bas parce qu'il y est *invisible*, *non
+attribuable* et *farmable à grande échelle*. Aucune des trois ne vaut ici — une
+attribution est signée, publique et motivée, et l'interface affiche « par
+soi-même » quand l'auteur est la cible. Le garde-fou n'est pas une règle de
+dérivation, c'est le roster : abuser se voit, et se révoque (ce qui efface tout
+d'un geste, auto-attributions comprises).
+
+**Retirer des points est permis aussi**, dans la même liste et par la même somme :
+`amount` est signé. La première version le refusait au nom de « les points ne
+descendent jamais » — mais cet engagement porte sur le **pli automatique** (§16.5),
+pas sur une décision humaine signée. Un score que personne ne peut corriger à la
+baisse rend la moitié de l'outil inutile : une attribution de complaisance ou une
+faute de frappe à 50 000 points ne se réparent, sinon, que par celui qui les a
+posées.
+
+Une seule borne, et elle est de présentation : **le score affiché est plancherisé
+à zéro.** La somme attribuée peut être négative, le nombre montré non — un négatif
+dans un classement public serait un pilori permanent, ce qui est un acte bien plus
+fort que « retirer des points ». Le retrait reste intégralement lisible ligne par
+ligne sur le profil, avec son motif : on plancherise le total, on ne cache pas le
+geste. Et le panneau annonce le plancher avant la signature (« c'est 500 de plus
+que ce qu'il a »), pour que retirer trop ne passe pas pour retirer juste.
+
+**Ce n'est pas la clé racine qui signe, c'est une clé de staff.** La clé racine
+n'est pas une identité de tous les jours (§15.2, `docs/moderation-staff.md`) :
+elle ne signe que le roster, quelques events par an, et vit dans un signeur
+NIP-46 parce que Nostr n'a pas de révocation. Récompenser un bon message trois
+fois par semaine la ferait descendre dans l'usage quotidien — exactement le
+risque qu'elle décrit. Le roster délègue déjà ; les attributions passent par la
+même délégation.
+
+**L'indexeur n'en sait rien.** Il reste un pli pur sur le contenu public ; c'est
+le client qui additionne les deux sources. Lui donner cette autorité l'obligerait
+à connaître la clé racine, qu'il ignore aujourd'hui.
+
+**Pas de points négatifs.** « Les points ne descendent jamais » (§16.5) tient :
+annuler une attribution précise couvre l'erreur, et une sanction chiffrée est une
+autre fonctionnalité que récompenser — elle se concevra à part si elle se
+conçoit.
+
+**Publique, motif compris.** Une récompense que personne ne voit ne récompense
+rien : c'est l'argument principal, avant même la cohérence avec le reste de la
+modération (`/moderation` dit déjà « rien n'est secret »). Le motif s'affiche sur
+le profil de la personne, sous les points, avec la clé qui l'a donné. Le motif
+est **obligatoire à l'écriture** et **accepté vide à la lecture** : c'est la
+leçon déjà apprise sur `normalizePubkey` — être strict à la lecture produit un
+rejet muet, où le staff donne trois cents points et où rien ne se passe.
+
+À l'écran : un onglet dans `/admin`, à côté de Signalements / Journal / Équipe /
+Relais. Il montre **la conséquence avant la signature** (« passe du niveau 4 au
+niveau 6 »), comme le bloc de confirmation d'une révocation juste à côté, et pour
+la même raison. Ce n'est pas une caisse : aucun prix, aucune pastille, et le seul
+élément mis en avant est ce que le geste va faire.
+
+### 16.9 Apparence : ce qu'un niveau ouvre
+
+Un forum où personne ne peut se donner une tête est un forum mort. Les points
+rendent la contribution visible ; l'apparence la rend **portable** — c'est la
+différence entre porter un galon et s'être construit une figure.
+
+#### Le mécanisme : revendiquer, puis accorder au rendu
+
+Une customisation vit dans le **kind 0**, sous des clés namespacées
+(`forome_color`, `forome_gradient`, `forome_anim`, `forome_ring`, `forome_title`,
+`forome_avatar_anim`), à côté de `forome_signature` qui suivait déjà ce chemin.
+
+Conséquence qu'il faut regarder en face : **le kind 0 est signé par la personne
+elle-même**, donc il n'existe aucun portier à l'écriture. Une clé neuve peut
+déclarer `forome_gradient: "arc-en-ciel"`, et n'importe quel client tiers
+l'affichera sans rien vérifier. Ce qui protège le forum n'est donc pas un refus
+d'écriture — il n'y en a pas — mais **notre décision de ne rendre que ce qui est
+gagné** : `grantStyle(revendication, niveau)`, chez le lecteur, à chaque rendu.
+
+C'est la doctrine du §9.4 appliquée à autre chose que la modération : le lecteur
+décide de ce qu'il affiche. Et c'est ce qui rend cohérent l'interrupteur
+« afficher les couleurs de pseudo » du menu utilisateur — allumé par défaut, mais
+c'est bien le lecteur qui tranche.
+
+Aucune monnaie, aucun solde, aucune transaction. **Des droits, pas des achats** :
+un droit se recalcule à chaque rendu, un solde ne se recalcule pas. Un solde
+assis sur un nombre que l'indexeur peut réviser à la baisse (§16.7) rendrait un
+achat invalide après coup, et il faudrait alors reprendre la customisation —
+c'est-à-dire le retrait que tout le projet refuse (§9.2).
+
+#### La palette est fermée
+
+C'est la décision structurante. Un `#RRGGBB` libre donne, garanti : du gris
+illisible sur fond sombre, du jaune fluo sur fond clair, et un pseudo qui
+disparaît quand le lecteur bascule le thème — parce que la personne a choisi sa
+couleur dans un thème et pas dans l'autre.
+
+Chaque entrée est donc un **couple** (clair, sombre), et le plancher de contraste
+est **vérifié par les tests** dans les deux thèmes, pas à l'œil. Les deux valeurs
+partent ensemble dans le DOM ; c'est le CSS qui tranche, par les mêmes sélecteurs
+de thème que la charte.
+
+Bénéfice qu'un sélecteur libre ne peut pas donner : **du vocabulaire.** « Le mec
+au pseudo cramoisi » est une phrase que les gens diront ; « le mec en #B21E3C »
+n'en est pas une. C'est la couche culturelle du §15.3, et elle arrive gratuitement.
+
+#### L'orange reste réservé
+
+La charte n'a qu'un signal qui doit percer : l'orange dit « ça chauffe ». Un
+pseudo orange fabriquerait une fausse alerte dans chaque fil où il passe, et le
+rail de chauffe cesserait de vouloir dire quelque chose. La bande de teintes
+8–45 est donc interdite à la palette, et c'est un test, pas une intention.
+
+Une couleur retirée sur douze — pas une interdiction de couleur. (Le « cuivre »
+de la première liste est tombé pour cette raison : teinte 29, en pleine bande.)
+
+Un dégradé multi-teintes échappe à la règle : `arc-en-ciel` contient une part
+d'orange, en un arrêt sur six, et se lit comme une décoration et non comme le
+remplissage uni d'un signal.
+
+#### L'échelle
+
+| Palier | Points | ~jours min | Ce qui s'ouvre |
+|---|---|---|---|
+| 2 | 25 | 1 | six couleurs sobres |
+| 4 | 150 | 4 | six couleurs vives · titre libre |
+| 6 | 375 | 10 | cadre d'avatar uni |
+| 9 | 900 | 23 | dégradés · cadre en dégradé |
+| 12 | 1 650 | 42 | le dégradé animé |
+| 15 | 2 625 | 66 | l'avatar animé |
+
+Deux règles de composition l'ont dessinée :
+
+1. **Le premier palier doit tomber en un ou deux jours.** Sur un forum jeune, une
+   récompense qui arrive dans six semaines ne donne de vie à rien.
+2. **Un axe qu'on peut effacer en déposant son propre média n'est pas un axe de
+   récompense, c'est un défaut.** Les variantes d'identicon ont été écartées pour
+   ça : au niveau 6, elles n'auraient récompensé que les gens qui ont refusé de
+   mettre une photo. Ce qui tient le milieu de l'échelle est donc le **cadre
+   d'avatar** — le seul objet du fil qu'une photo de profil n'efface pas.
+
+#### Le titre libre, et l'usurpation
+
+Du texte qu'on s'écrit à côté de son pseudo. Deux protections :
+
+- **registre typographique** : mono, encre faible, jamais une pastille. Une
+  pastille dirait « rôle accordé par le forum », ce qu'un titre n'est pas. C'est
+  la protection principale — quelqu'un qui écrit « modo » ne ressemble pas à un
+  modérateur, il ressemble à quelqu'un qui a écrit « modo » ;
+- **liste de mots réservés**, qui ne protège que du cas honnête-paresseux et le
+  dit dans son propre commentaire : une graphie exotique passe.
+
+Un filtre plus important qu'il n'y paraît : les **invisibles** (contrôles,
+espaces de largeur nulle, et surtout les surcharges de direction `U+202A-202E`).
+Sans lui, un seul caractère inverse l'ordre d'affichage de la bande d'auteur. Le
+trou était dans la première version du filtre et c'est le test qui l'a trouvé,
+pas la relecture.
+
+#### L'avatar animé
+
+Le GIF ne passe pas par le cadreur : celui-ci recadre au canevas, et un canevas
+ne garde que la première image — le recadrage tuerait ce qu'on vient chercher. Il
+part donc tel quel, plafonné à 1 Mo, et le carré est fait à l'affichage.
+
+Deux cas le **figent**, en peignant sa première image :
+
+- l'animation est revendiquée sans être gagnée ;
+- le lecteur a demandé à son système de réduire les animations. Pour certaines
+  personnes une image qui clignote est un déclencheur, pas une décoration, et
+  aucun palier ne passe devant ça.
+
+Le gel est gratuit : `createImageBitmap` d'un GIF ne rend que sa première image —
+la même propriété qui interdit de le recadrer. Aucun décodage côté serveur.
+
+Le palier 15 (66 jours minimum) n'est pas qu'une récompense, **c'est la
+protection** : un avatar qui clignote est le vecteur de troll le plus classique
+qui existe, et on ne farme pas deux mois pour faire clignoter un écran alors
+qu'on ouvrirait dix comptes dans l'heure.
+
+#### À l'écran : un miroir, pas une boutique
+
+L'éditeur (`/profil/editer`) est un vestiaire. La page portait déjà un aperçu
+« Vu par les autres » qui rend une **vraie bande d'auteur** ; l'apparence se pose
+juste au-dessus, et chaque clic y atterrit. On ne choisit pas une pastille dans
+une grille, on s'habille devant une glace.
+
+Quatre décisions qui font que ça ne ressemble pas à du free-to-play :
+
+- **aucun cadenas, aucun grisé.** Les couleurs qu'on n'a pas encore sont montrées
+  **dans leur vraie couleur**, en plus petit. Griser détruirait la seule chose qui
+  motive — voir ce qu'on vise — et un cadenas a le vocabulaire du paiement. **La
+  taille dit la disponibilité** ;
+- **la palette est rangée par palier**, pas par teinte : le regroupement encode
+  une progression, qui est vraie, plutôt qu'un nuancier, qui ne l'est pas ;
+- **le nom de la couleur est toujours affiché** — c'est lui que les gens diront ;
+- **rien ne publie au clic.** Les choix rejoignent le formulaire, donc un seul
+  « Publier le profil » écrit **un seul** kind 0. Une pastille qui publierait au
+  clic remplacerait le profil une douzaine de fois pendant qu'on regarde, et
+  chaque remplacement est un event poussé sur tous les relais.
+
+Dans le fil, **le titre cède avant le pseudo** : une bande chargée (pseudo,
+discriminant, niveau, titre, « auteur du topic », « toi ») tronquait le pseudo à
+huit caractères pour garder un titre entier — l'inverse exact de la hiérarchie.

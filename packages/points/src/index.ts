@@ -166,6 +166,26 @@ export function levelProgress(points: number): LevelProgress {
 }
 
 /**
+ * Le score qu'on affiche : ce qui a été gagné, plus ce que le staff a attribué à
+ * la main (§16.8), **jamais sous zéro**.
+ *
+ * La somme attribuée peut être négative — un retrait peut dépasser ce que la
+ * personne avait. Le nombre montré, lui, ne peut pas : un négatif dans un
+ * classement public serait un pilori permanent, ce qui est un acte bien plus fort
+ * que « retirer des points ». Le retrait reste lisible ligne par ligne sur le
+ * profil : on plancherise le total, on ne cache pas le geste.
+ *
+ * Vit ici et non dans le client parce que **deux endroits en dépendent** — le
+ * score affiché et l'aperçu du panneau d'attribution, qui doit montrer exactement
+ * ce que la personne verra. Deux copies auraient fini par annoncer un résultat
+ * que l'écran ne produit pas.
+ */
+export function shownPoints(earned: number, granted: number): number {
+  const total = (Number.isFinite(earned) ? earned : 0) + (Number.isFinite(granted) ? granted : 0)
+  return total > 0 ? Math.floor(total) : 0
+}
+
+/**
  * Nombre minimal de jours pour atteindre ce niveau, plafond quotidien compris.
  *
  * Sert à l'explication affichée : « le niveau 12 demande au moins 41 jours » dit

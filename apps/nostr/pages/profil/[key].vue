@@ -34,7 +34,9 @@
                 <div class="profil__names">
                   <p class="profil__name">
                     <template v-if="profile?.name">
-                      {{ profile.name }}
+                      <!-- L'apparence accordée, pas revendiquée : même portier que
+                           dans le fil (§16.9). -->
+                      <span v-bind="apparence.pseudoBind(pubkey)">{{ profile.name }}</span>
                       <!-- Le pseudo n'est pas unique sur Nostr (§3.5) : dès
                            qu'il est déclaré, le discriminant l'accompagne. -->
                       <!-- La clé en entier n'est listée qu'ICI, pas sous le
@@ -55,6 +57,11 @@
                     </template>
                     <span v-else class="profil__noname">Aucun pseudo déclaré</span>
                   </p>
+
+                  <!-- Le titre libre est du texte qu'on s'écrit : il vit avec la
+                       provenance, au-dessus des pastilles qui, elles, disent un
+                       rôle accordé par le forum. -->
+                  <p v-if="freeTitle" class="titre-libre profil__titre">{{ freeTitle }}</p>
 
                   <div class="profil__tags">
                     <span v-if="isSelf" class="tag tag--ok">toi</span>
@@ -142,7 +149,16 @@
                   <p class="profil__level-n mono">
                     <Explain term="niveau" :body="levelBody">niveau {{ prog.level }}</Explain>
                   </p>
-                  <p class="profil__level-pts mono">{{ prog.points.toLocaleString('fr-FR') }} points</p>
+                  <p class="profil__level-pts mono">
+                    {{ prog.points.toLocaleString('fr-FR') }} points
+                    <!-- La décomposition est dite, pas cachée : une partie de ce
+                         nombre a été donnée à la main, et le taire ferait passer
+                         une distinction pour de l'activité. -->
+                    <span v-if="granted !== 0" class="profil__level-split">
+                      dont {{ Math.abs(granted).toLocaleString('fr-FR') }}
+                      {{ granted > 0 ? 'attribués' : 'retirés' }}
+                    </span>
+                  </p>
                 </div>
 
                 <!-- Barre de progression : la même idée que le rail de chauffe de
@@ -174,6 +190,34 @@
                     · <NuxtLink to="/classement" class="profil__level-rank">{{ rank }}ᵉ au classement</NuxtLink>
                   </template>
                 </p>
+
+                <!-- Ce que le staff a donné ou retiré à la main, motif compris
+                     (§16.8). Publiques par conception : une récompense que
+                     personne ne voit ne récompense rien, un retrait que personne
+                     ne voit est une sanction secrète, et tout le reste de la
+                     modération est déjà auditable. En encre et non en orange —
+                     l'orange dit ce qui arrive maintenant, ceci dit ce qui a été
+                     fait ; seul un retrait prend la couleur des états négatifs. -->
+                <ul v-if="distinctions.length > 0" class="profil__grants">
+                  <li
+                    v-for="d in distinctions"
+                    :key="`${d.by}:${d.at}`"
+                    class="profil__grant"
+                    :class="{ 'profil__grant--retrait': d.amount < 0 }"
+                  >
+                    <span class="profil__grant-n mono">
+                      {{ d.amount > 0 ? '+' : '−' }}{{ Math.abs(d.amount).toLocaleString('fr-FR') }}
+                    </span>
+                    <span class="profil__grant-why">{{ d.reason || 'sans motif' }}</span>
+                    <span class="profil__grant-by mono">
+                      <!-- Nommé : sans ça, l'auditabilité publique de
+                           l'auto-attribution existerait sans être lisible. -->
+                      <template v-if="d.by === pubkey">par soi-même</template>
+                      <template v-else>par ·{{ profiles.discriminator(d.by) }}</template>
+                      · il y a {{ relativeTime(d.at) }}
+                    </span>
+                  </li>
+                </ul>
               </section>
 
               <p v-if="state === 'error'" class="profil__facts-err">
@@ -324,6 +368,7 @@ const social = useSocialStore()
 const identity = useIdentityStore()
 const dms = useDmStore()
 const points = useUserPointsStore()
+const mod = useModerationStore()
 const relays = useRelayStore()
 
 /** Accepte une `npub` comme une clé hex — les gens copient l'un ou l'autre. */
@@ -510,6 +555,11 @@ const hasFacts = computed(() => Boolean(firstSeenLabel.value || followCount.valu
 const prog = computed(() => points.progressOf(pubkey.value ?? ''))
 const pointsEntry = computed(() => (pubkey.value ? points.entryOf(pubkey.value) : null))
 const rank = computed(() => (pubkey.value ? points.rankOf(pubkey.value) : null))
+const granted = computed(() => (pubkey.value ? points.grantedOf(pubkey.value) : 0))
+/** Ce que le staff a donné à cette clé, motifs compris. Le plus récent d'abord. */
+const distinctions = computed(() => (pubkey.value ? mod.grantsFor(pubkey.value) : []))
+const apparence = useApparence()
+const freeTitle = computed(() => (pubkey.value ? apparence.titleOf(pubkey.value) : null))
 
 /**
  * Le niveau 1 occupe toute sa largeur : sa borne basse et sa borne haute sont
@@ -744,6 +794,9 @@ usePageTitle(() => (pubkey.value ? profiles.displayName(pubkey.value) : 'Profil'
 .profil__names {
   min-width: 0;
 }
+/* `--pseudo-couleur` vient de l'apparence gagnée ; sans elle, l'encre ordinaire.
+   Ici le défaut n'est PAS le bleu du fil : sur cette page le nom est un titre,
+   pas un lien. */
 .profil__name {
   margin: 0;
   font-family: var(--font-display);
@@ -751,7 +804,7 @@ usePageTitle(() => (pubkey.value ? profiles.displayName(pubkey.value) : 'Profil'
   font-weight: 700;
   letter-spacing: -0.035em;
   line-height: 1.2;
-  color: var(--ink);
+  color: var(--pseudo-couleur, var(--ink));
   word-break: break-word;
 }
 .profil__noname {
@@ -915,6 +968,58 @@ usePageTitle(() => (pubkey.value ? profiles.displayName(pubkey.value) : 'Profil'
 }
 .profil__level-rank {
   color: var(--ink-3);
+}
+.profil__titre {
+  margin: 3px 0 0;
+  max-width: 28ch;
+}
+
+.profil__level-split {
+  color: var(--ink-4);
+}
+
+/* ------------------------------------------------------ attributions du staff
+ * Des lignes, pas des médailles. Un pictogramme de trophée par entrée
+ * transformerait la page en tableau de succès de jeu ; le motif écrit en clair
+ * dit infiniment plus, et c'est lui qu'on vient lire. La même forme porte les
+ * retraits, qui ne diffèrent que par le signe et la couleur du nombre — les
+ * séparer en deux listes aurait laissé lire l'une sans l'autre.
+ */
+.profil__grants {
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.profil__grant {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 1px 9px;
+  padding: 7px 9px;
+  background: var(--surface);
+  border-radius: var(--r-pastille);
+}
+.profil__grant-n {
+  grid-row: span 2;
+  align-self: center;
+  font-size: var(--fs-base);
+  font-weight: 600;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.profil__grant-why {
+  font-size: var(--fs-md);
+  line-height: 1.4;
+  color: var(--ink);
+}
+.profil__grant-by {
+  font-size: var(--fs-xs);
+  color: var(--ink-4);
+}
+.profil__grant--retrait .profil__grant-n {
+  color: var(--warn);
 }
 
 .profil__facts-err {

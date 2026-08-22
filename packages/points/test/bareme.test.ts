@@ -6,6 +6,7 @@ import {
   levelProgress,
   minDaysForLevel,
   pointsForLevel,
+  shownPoints,
 } from '../src/index.js'
 
 describe('courbe des niveaux', () => {
@@ -59,6 +60,33 @@ describe('courbe des niveaux', () => {
     expect(p.toNext).toBe(50)
     expect(p.nextAt).toBe(150)
     expect(p.into + p.toNext).toBe(p.span)
+  })
+
+  describe('score affiché', () => {
+    it('additionne le gagné et l’attribué', () => {
+      expect(shownPoints(100, 400)).toBe(500)
+      expect(shownPoints(100, 0)).toBe(100)
+    })
+
+    it('laisse un retrait faire baisser le score', () => {
+      expect(shownPoints(500, -200)).toBe(300)
+    })
+
+    /** Un négatif dans un classement public serait un pilori permanent. */
+    it('ne descend jamais sous zéro, même si le retrait dépasse', () => {
+      expect(shownPoints(300, -800)).toBe(0)
+      expect(shownPoints(0, -1)).toBe(0)
+    })
+
+    it('ne casse pas sur des valeurs absurdes', () => {
+      expect(shownPoints(Number.NaN, 50)).toBe(50)
+      expect(shownPoints(50, Number.NaN)).toBe(50)
+    })
+
+    it('reste un niveau calculable', () => {
+      expect(levelOf(shownPoints(300, -800))).toBe(1)
+      expect(levelOf(shownPoints(0, 250))).toBe(5)
+    })
   })
 
   /** Le plafond quotidien fait du niveau une durée : c'est ce qu'on affiche. */

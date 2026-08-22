@@ -45,6 +45,7 @@ npm run smoke:strfry       # la même policy À TRAVERS strfry (dev:strfry requi
 npm run smoke:dm           # MP NIP-17 chiffrés
 npm run smoke:nip46        # signature distante + révocation
 npm run smoke:moderation   # roster → ban → refus réel du relais
+npm run smoke:points       # attribution de points → annulation par remplacement réel — tourne en CI
 npm run smoke:edit         # correction d'un message, client → relais → lecteur
 npm run check:relays       # connexion, lecture et NIP-11 des relais publics
 ```
@@ -53,7 +54,7 @@ Modération en local : `npm run setup:moderation` écrit **un seul `.env`** (rac
 que le client et le relais lisent tous les deux ; relancer les deux ensuite,
 sinon « bannir » masque sans bloquer.
 
-CI (`.github/workflows/ci.yml`) : typecheck, test, `smoke:policy`, build. Un push
+CI (`.github/workflows/ci.yml`) : typecheck, test, `smoke:policy`, `smoke:points`, build. Un push
 sur `main` qui passe est déployé par SSH sur la VM (`deploy/update.sh`) ; le
 retour arrière se fait en relançant le workflow avec `ref = <sha>`.
 
@@ -67,7 +68,7 @@ code qu'ils sont obligés de lire à l'identique :
 | `apps/nostr` | le client (Nuxt, `ssr: false`, Pinia). Signe et publie ; aucune base de données |
 | `apps/indexer` | publie le classement comme event Nostr signé (kind 30078, tag `d` = `forome.tick`) |
 | `packages/relay-policy` | la policy d'écriture, **seule implémentation**, partagée par le plugin strfry, `scripts/dev-relay.ts` et l'indexeur. Y vivent aussi les formats que plusieurs programmes doivent lire pareil : révisions, sondages, forme du fil (`thread.ts`) |
-| `packages/points` | le barème des points et le pli qui les compte (spec §16). L'indexeur compte, le client dérive le niveau |
+| `packages/points` | le barème des points, le pli qui les compte et le catalogue d'apparence (spec §16). L'indexeur compte, le client dérive le niveau **et accorde l'apparence au rendu** |
 
 Le raisonnement complet est dans `docs/conception.md` ; le code y renvoie par
 numéro de section (« spec §9.2 »). Ces renvois sont la clé pour comprendre un
@@ -113,6 +114,13 @@ module — les suivre avant de modifier, et les tenir à jour en ajoutant.
   à 32 Ko. Le **niveau** n'est jamais transporté : il se dérive des points chez le
   lecteur. Et il ne débloque **rien** — un droit derrière un nombre que l'indexeur
   seul établit mettrait l'indexeur sur le chemin critique de l'écriture.
+- L'**apparence** (couleur de pseudo, cadre, titre, avatar animé — §16.9) est
+  **revendiquée** dans le kind 0, que la personne signe elle-même : il n'y a donc
+  aucun portier à l'écriture. Ce qui protège est `grantStyle`, appelé **au rendu**
+  chez le lecteur. Corollaire : l'orange de la charte reste interdit à la palette
+  (c'est un test), et un motif d'attribution de points est obligatoire à
+  l'écriture mais accepté vide à la lecture — être strict en lecture produit un
+  rejet muet.
 
 ### Côté client
 

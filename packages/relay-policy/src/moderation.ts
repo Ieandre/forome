@@ -24,6 +24,22 @@ export const KIND_APP_DATA = 30078
 export const STAFF_D_TAG = 'forome.staff'
 /** La liste d'actions d'UN modérateur. Une par clé de staff. */
 export const MODERATION_D_TAG = 'forome.moderation'
+/**
+ * Les points attribués à la main par UN membre du staff. Une liste par clé.
+ *
+ * Vit ici, avec la modération, et pas dans `@forome/points` : une attribution
+ * n'est pas un pli sur du contenu public, c'est **une décision signée par une
+ * autorité épinglée**. C'est exactement la nature d'une action de modération, et
+ * c'est cette parenté qui donne gratuitement les trois propriétés qui comptent —
+ * révocable en republiant la liste, annulée en bloc si la clé quitte le roster,
+ * auditable publiquement.
+ *
+ * Corollaire volontaire : **l'indexeur n'en sait rien.** Il reste un pli pur sur
+ * les events publics ; c'est le client qui additionne. Bénéfice réel — les
+ * attributions vivent dans des events signés, donc elles survivent à une perte
+ * de l'état de l'indexeur, là où les points gagnés sont la partie périssable.
+ */
+export const GRANTS_D_TAG = 'forome.points.grants'
 
 export type Role = 'admin' | 'moderator'
 
@@ -72,6 +88,35 @@ export interface AppliedAction extends ModAction {
   by: string
 }
 
+/**
+ * Des points donnés — ou retirés — à la main, pour ce que le barème ne sait pas
+ * voir (spec §16.8).
+ *
+ * `amount` est **signé** : positif pour récompenser, négatif pour retirer. Les
+ * deux vivent dans la même liste et se somment, parce que ce sont le même geste
+ * dans deux sens — une main qui corrige un score, motif à l'appui.
+ *
+ * Le total attribué peut donc être négatif. Ce qui **ne** peut pas l'être, c'est
+ * le score affiché : le client le plancherise à zéro (`stores/points.ts`). Un
+ * nombre négatif dans un classement public serait un pilori permanent, ce qui est
+ * un acte bien plus fort que « retirer des points » — et le retrait reste
+ * intégralement lisible, ligne par ligne, sur le profil.
+ */
+export interface PointGrant {
+  /** Clé visée. Peut être celle de l'auteur : s'attribuer des points est permis. */
+  target: string
+  /** Signé : > 0 récompense, < 0 retire. Jamais 0. */
+  amount: number
+  /** Pourquoi. C'est lui qui fait la différence entre une récompense et un passe-droit. */
+  reason: string
+  at: number
+}
+
+/** Une attribution et la clé qui l'a signée. L'interface n'affiche jamais l'une sans l'autre. */
+export interface AppliedGrant extends PointGrant {
+  by: string
+}
+
 export interface ModerationState {
   /** clé publique → rôle. Contient toujours la clé racine. */
   staff: Map<string, Role>
@@ -85,6 +130,15 @@ export interface ModerationState {
   pinned: Map<string, AppliedAction>
   /** cible → signalement classé sans suite */
   ignored: Map<string, AppliedAction>
+  /**
+   * clé récompensée → attributions en vigueur.
+   *
+   * Une **liste** et non une entrée unique, à la différence de tout ce qui
+   * précède : un masquage est un état (il y en a un seul en vigueur), une
+   * récompense est un fait qui s'ajoute. Trois distinctions valent trois lignes
+   * sur un profil, et leur somme fait les points.
+   */
+  grants: Map<string, AppliedGrant[]>
 }
 
 const HEX64 = /^[0-9a-f]{64}$/
@@ -100,8 +154,29 @@ export const MAX_REASON_LEN = 140
  */
 export const MAX_ACTIONS_PER_LIST = 200
 
+/** Même borne, même raison, pour la liste d'attributions d'un membre du staff. */
+export const MAX_GRANTS_PER_LIST = 200
+
+/**
+ * Plafond par attribution, **en valeur absolue**.
+ *
+ * Ce n'est pas une limite de politique — donner ou retirer autant qu'on veut est
+ * le propos. C'est une borne d'ingénierie : la courbe des niveaux passe par une
+ * racine carrée, et un `amount` absurde (ou `Infinity`, qu'un JSON écrit sans
+ * effort) rendrait un niveau `NaN` affiché à la place d'un nombre. Un million de
+ * points vaut déjà le niveau 283.
+ */
+export const MAX_GRANT_AMOUNT = 1_000_000
+
+/**
+ * Les familles qu'une ACTION alimente. `staff` et `grants` n'en sont pas : le
+ * roster vient d'ailleurs, et une attribution n'est pas un état à remplacer —
+ * l'exclure ici est ce qui empêche de traiter une récompense comme un masquage.
+ */
+type ActionFamily = keyof Omit<ModerationState, 'staff' | 'grants'>
+
 /** Quelle famille d'état une action alimente. `null` = type inconnu. */
-function familyOf(type: ActionType): keyof Omit<ModerationState, 'staff'> | null {
+function familyOf(type: ActionType): ActionFamily | null {
   switch (type) {
     case 'hide':
     case 'show':
@@ -220,6 +295,44 @@ export function parseActions(ev: Event): ModAction[] | null {
   return out
 }
 
+/**
+ * Lit une liste d'attributions de points.
+ *
+ * **Un motif vide est accepté ici**, alors que l'écriture l'exige (voir
+ * `grant()` côté client). Ce n'est pas une incohérence, c'est la leçon déjà
+ * apprise sur `normalizePubkey` : être strict à la lecture produit un rejet
+ * silencieux — le staff donne 300 points, rien ne se passe, et il n'y a rien à
+ * comprendre. On refuse donc au moment où on peut expliquer, et on lit
+ * largement.
+ */
+export function parseGrants(ev: Event): PointGrant[] | null {
+  if (ev.kind !== KIND_APP_DATA || tagValue(ev, 'd') !== GRANTS_D_TAG) return null
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(ev.content)
+  } catch {
+    return null
+  }
+  const body = parsed as { v?: unknown; grants?: unknown }
+  if (body?.v !== 1 || !Array.isArray(body.grants)) return null
+
+  const out: PointGrant[] = []
+  for (const raw of body.grants) {
+    const g = raw as Partial<PointGrant>
+    if (typeof g?.target !== 'string' || !HEX64.test(g.target)) continue
+    if (typeof g.amount !== 'number' || !Number.isFinite(g.amount)) continue
+    // `trunc` et non `floor` : sur un retrait, `floor(-12.9)` donnerait -13, soit
+    // un point de plus que ce que la personne a signé.
+    const amount = Math.trunc(g.amount)
+    if (amount === 0 || Math.abs(amount) > MAX_GRANT_AMOUNT) continue
+    if (typeof g.at !== 'number' || !Number.isFinite(g.at)) continue
+    const reason = typeof g.reason === 'string' ? g.reason.trim().slice(0, MAX_REASON_LEN) : ''
+    out.push({ target: g.target, amount, reason, at: g.at })
+  }
+  return out
+}
+
 /** Garde la version la plus récente de chaque event adressable (pubkey, kind, `d`). */
 function newestByAuthor(events: Iterable<Event>, dTag: string): Map<string, Event> {
   const out = new Map<string, Event>()
@@ -252,6 +365,7 @@ export function deriveState(events: Iterable<Event>, rootAdmin: string): Moderat
     locked: new Map(),
     pinned: new Map(),
     ignored: new Map(),
+    grants: new Map(),
   }
   if (!HEX64.test(rootAdmin)) return state
 
@@ -288,12 +402,52 @@ export function deriveState(events: Iterable<Event>, rootAdmin: string): Moderat
     }
   }
 
+  /*
+   * Les attributions (spec §16.8). Deux règles :
+   *   1. **même règle 1 que les actions** — seules comptent celles d'une clé
+   *      actuellement au roster, donc révoquer quelqu'un annule tout ce qu'il a
+   *      donné, d'un geste, y compris à lui-même
+   *   2. **ça s'additionne**, ça ne se remplace pas — contrairement à tout ce qui
+   *      précède. Une attribution n'est pas un état : en recevoir trois, c'est
+   *      trois lignes, pas la dernière qui gagne. Et c'est ce qui permet à un
+   *      retrait de corriger la générosité d'un autre modérateur.
+   *
+   * **S'attribuer des points à soi-même est permis.** L'auto-crédit est interdit
+   * dans le pli automatique (`@forome/points`) parce qu'il y est invisible, non
+   * attribuable et farmable à grande échelle ; aucune des trois ne vaut ici. Une
+   * attribution est signée, publique, motivée, et l'interface dit « par
+   * soi-même » quand l'auteur est la cible. Le garde-fou n'est pas une règle de
+   * dérivation, c'est le roster : abuser se voit, et se révoque.
+   */
+  for (const [author, ev] of newestByAuthor(all, GRANTS_D_TAG)) {
+    if (!state.staff.has(author)) continue // règle 1
+    let kept = 0
+    for (const g of parseGrants(ev) ?? []) {
+      if (++kept > MAX_GRANTS_PER_LIST) break
+      const list = state.grants.get(g.target)
+      if (list) list.push({ ...g, by: author })
+      else state.grants.set(g.target, [{ ...g, by: author }])
+    }
+  }
+  for (const list of state.grants.values()) list.sort((a, b) => b.at - a.at)
+
   for (const action of winner.values()) {
     if (isUndo(action.type)) continue
     const family = familyOf(action.type)
     if (family) state[family].set(action.target, action)
   }
   return state
+}
+
+/**
+ * Somme **signée** de ce que le staff a attribué à cette clé : les récompenses
+ * moins les retraits. Peut donc être négative — c'est l'appelant qui décide
+ * quoi en faire (le client plancherise le score affiché à zéro).
+ */
+export function grantedPoints(state: ModerationState, pubkey: string): number {
+  let total = 0
+  for (const g of state.grants.get(pubkey) ?? []) total += g.amount
+  return total
 }
 
 /* ------------------------------------------------- vues pour le relais */

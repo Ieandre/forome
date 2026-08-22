@@ -24,6 +24,7 @@
     "smoke:dm": "npx tsx scripts/smoke-dm.ts",
     "smoke:nip46": "npx tsx scripts/smoke-nip46.ts",
     "smoke:moderation": "npx tsx scripts/smoke-moderation.ts",
+    "smoke:points": "npx tsx scripts/smoke-points.ts",
     "smoke:edit": "npx tsx scripts/smoke-edit.ts",
     "check:relays": "npx tsx scripts/check-relays.ts",
     "backup:fetch": "bash scripts/fetch-backup.sh"

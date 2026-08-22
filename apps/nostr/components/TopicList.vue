@@ -285,6 +285,8 @@ const profiles = useProfileStore()
 const mod = useModerationStore()
 const reading = useReadingStore()
 const relays = useRelayStore()
+const identity = useIdentityStore()
+const anon = useAnonStore()
 
 /** Champ de filtre ouvert — déclaré ici, et pas dans sa section, parce que
  *  l'application de l'ordre en attente en dépend. */
@@ -300,6 +302,32 @@ function applyPending(): void {
     displayOrder.value = pendingOrder.value
     pendingOrder.value = null
   }
+}
+
+/** Mes topics, masques compris — même test que dans le fil (`PostFeed`). */
+function isMine(t: TopicRow): boolean {
+  return t.pubkey === identity.pubkey || anon.isMine(t.pubkey)
+}
+
+/**
+ * Insère UNE rangée à son rang sans appliquer le reste du réordonnancement.
+ *
+ * L'ancrage se prend sur le premier topic qui la suit dans l'ordre en attente
+ * ET qui est déjà affiché : c'est le seul point commun aux deux ordres. La
+ * colonne accueille ainsi la rangée qui manque au lieu de se réorganiser sous
+ * les yeux du lecteur — ce que §7.1 interdit.
+ */
+function graft(row: TopicRow): void {
+  const next = pendingOrder.value
+  if (!next) return
+  const at = next.findIndex((t) => t.id === row.id)
+  if (at < 0) return
+  const shown = new Set(displayOrder.value.map((t) => t.id))
+  const anchor = next.slice(at + 1).find((t) => shown.has(t.id))
+  const where = anchor ? displayOrder.value.findIndex((t) => t.id === anchor.id) : -1
+  const copy = [...displayOrder.value]
+  copy.splice(where < 0 ? copy.length : where, 0, row)
+  displayOrder.value = copy
 }
 
 /**
@@ -462,6 +490,13 @@ watch(
       pendingOrder.value = null
     } else {
       pendingOrder.value = next
+      // Le topic que je viens d'ouvrir n'est pas un mouvement subi : c'est le
+      // résultat de mon geste, et §7.1 protège le lecteur des rangs qui bougent
+      // sans lui, pas de son propre topic. Sans ça il attendait derrière la
+      // pilule « +1 nouveau topic » — celui qui venait de l'écrire ne le
+      // trouvait nulle part, et la pilule le désignait comme le topic d'un autre.
+      const shown = new Set(displayOrder.value.map((t) => t.id))
+      for (const t of next) if (!shown.has(t.id) && isMine(t)) graft(t)
     }
   },
   { immediate: true },

@@ -131,6 +131,36 @@ const POST_MAX_EDGE = 1600
 /** Plafond du dépôt, aligné sur `server/api/media/index.post.ts`. */
 export const POST_MAX_BYTES = 4 * 1024 * 1024
 
+/**
+ * Plafond d'un avatar animé (§16.9). Bien plus bas que celui d'une image de
+ * message, et pour une raison qui n'a rien à voir avec le stockage : **un avatar
+ * est rendu trente fois par écran.** Un GIF de 4 Mo dans une liste dense, c'est
+ * 120 Mo décodés en boucle sur le téléphone du lecteur — nommément un bug selon
+ * la spec, pas un compromis.
+ */
+export const AVATAR_GIF_MAX_BYTES = 1024 * 1024
+
+/**
+ * Laisse passer un GIF tel quel pour un avatar.
+ *
+ * Il ne peut pas être recadré : `renderAvatar` passe par un canevas, et un
+ * canevas ne garde que la première image — un GIF fixe n'est plus un GIF. Donc
+ * pas de carré garanti ici, et c'est `object-fit: cover` qui s'en charge à
+ * l'affichage (voir `UserAvatar.vue`).
+ */
+export async function prepareAvatarGif(file: File): Promise<PreparedImage> {
+  if (file.type !== 'image/gif') throw new Error("ce fichier n'est pas un GIF")
+  if (file.size > AVATAR_GIF_MAX_BYTES) throw new Error('ce GIF dépasse 1 Mo')
+  const bitmap = await createImageBitmap(file).catch(() => {
+    throw new Error('GIF illisible')
+  })
+  try {
+    return { blob: file, type: 'image/gif', width: bitmap.width, height: bitmap.height }
+  } finally {
+    bitmap.close()
+  }
+}
+
 export interface PreparedImage {
   blob: Blob
   type: string

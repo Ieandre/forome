@@ -11,7 +11,15 @@
 import { defineStore } from 'pinia'
 import { reactive } from 'vue'
 import { isValid as nip05IsValid, isNip05 } from 'nostr-tools/nip05'
-import { KIND_PROFILE, anonName, isAnon, type NostrEvent, type Profile } from '~/types/nostr'
+import {
+  EMPTY_STYLE,
+  KIND_PROFILE,
+  anonName,
+  isAnon,
+  readStyle,
+  type NostrEvent,
+  type Profile,
+} from '~/types/nostr'
 import { kheyHandle, keyDiscriminator } from '~/utils/nostr'
 
 /**
@@ -125,6 +133,7 @@ export const useProfileStore = defineStore('profiles', () => {
     about: null,
     website: null,
     signature: null,
+    style: { ...EMPTY_STYLE },
   }
 
   function str(v: unknown, max: number): string | null {
@@ -147,6 +156,9 @@ export const useProfileStore = defineStore('profiles', () => {
         // 150 : la signature se répète sur chaque message d'un fil, donc sa
         // borne est un choix de mise en page, pas une précaution de parseur.
         signature: str(j.forome_signature, 150),
+        // Revendiquée, pas accordée : `readStyle` ne vérifie aucun droit. Le
+        // portier est `grantStyle`, appelé au rendu avec les points (§16.9).
+        style: readStyle(j),
       }
     } catch {
       return { ...EMPTY }

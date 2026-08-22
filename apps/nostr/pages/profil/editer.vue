@@ -92,6 +92,14 @@
               <p v-else-if="upload.error.value" class="field__error">{{ upload.error.value }}</p>
               <p v-else class="field__hint">
                 Recadrée en carré. Sans photo, c'est ton identicon qui s'affiche.
+                <!-- Dit AVANT le choix : découvrir qu'un GIF est refusé après
+                     l'avoir choisi est une déception qu'une phrase évite. -->
+                <template v-if="myLevel !== null && !open.gifAvatar">
+                  Un GIF animé s'ouvre au niveau {{ GIF_AVATAR_LEVEL }}.
+                </template>
+                <template v-else-if="myLevel !== null">
+                  Un GIF animé passe tel quel, sans recadrage, jusqu'à 1 Mo.
+                </template>
               </p>
             </div>
 
@@ -203,14 +211,204 @@
               </p>
             </div>
 
+            <!-- ============================================== apparence
+                 Ce n'est pas une boutique : aucun prix, aucune pastille de
+                 promotion, et le seul élément mis en avant est l'APERÇU juste
+                 en dessous. On ne choisit pas une couleur dans une grille, on
+                 s'habille devant une glace (§16.9). -->
+            <fieldset v-if="myLevel !== null" class="edit__app">
+              <legend class="edit__app-legend">Apparence</legend>
+
+              <p class="edit__app-level mono">
+                niveau {{ myLevel }}<template v-if="nextUnlock"> · {{ nextUnlock }}</template>
+                <NuxtLink to="/classement" class="edit__app-link">classement</NuxtLink>
+              </p>
+
+              <!-- Un manque se formule en invitation, jamais en vitrine vide. -->
+              <p v-if="myLevel < 2" class="edit__app-empty">
+                Ta première couleur s'ouvre au niveau 2, une trentaine de points. Ouvre un topic — le
+                premier message compte.
+              </p>
+
+              <template v-else>
+                <div class="edit__field">
+                  <span class="field__label">Couleur du pseudo</span>
+                  <!-- Des vrais boutons radio, masqués : le navigateur donne les
+                       flèches du clavier et le groupe accessible sans une ligne
+                       de JS. Douze boutons auraient fait douze arrêts de
+                       tabulation pour un seul choix. -->
+                  <div class="edit__pal">
+                    <div class="edit__pal-tier">
+                      <p class="edit__pal-label mono">sans</p>
+                      <div class="edit__pal-row">
+                        <label class="pal" :class="{ 'pal--on': !form.color && !form.gradient }">
+                          <input v-model="form.color" type="radio" name="pseudo-c" value="" class="visually-hidden" />
+                          <span class="pal__dot pal__dot--none" />
+                          <span class="visually-hidden">aucune couleur</span>
+                        </label>
+                      </div>
+                    </div>
+
+                    <!-- Les couleurs qu'on n'a pas encore sont montrées DANS
+                         leur vraie couleur, en plus petit. Griser détruirait la
+                         seule chose qui motive : voir ce qu'on vise. La taille
+                         dit la disponibilité, un cadenas dirait « paie ». -->
+                    <div v-for="t in colorTiers" :key="t.key" class="edit__pal-tier">
+                      <p class="edit__pal-label mono">{{ t.label }}</p>
+                      <div class="edit__pal-row">
+                        <label
+                          v-for="c in t.colors"
+                          :key="c.id"
+                          class="pal"
+                          :class="{ 'pal--on': form.color === c.id, 'pal--locked': !t.open }"
+                          @mouseenter="hovered = c.id"
+                          @mouseleave="hovered = null"
+                        >
+                          <input
+                            v-model="form.color"
+                            type="radio"
+                            name="pseudo-c"
+                            :value="c.id"
+                            :disabled="!t.open"
+                            class="visually-hidden"
+                          />
+                          <span class="pal__dot pseudo--couleur" :style="dotStyle(c)" />
+                          <span class="visually-hidden">
+                            {{ c.label }}{{ t.open ? '' : ` — niveau ${c.level}` }}
+                          </span>
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                  <!-- Le nom est toujours là : c'est lui que les gens diront. -->
+                  <p class="edit__pal-name">{{ shownColorName }}</p>
+                </div>
+
+                <div class="edit__field">
+                  <span class="field__label">
+                    Dégradé
+                    <span v-if="!gradientsOpen" class="edit__app-gate mono">niveau {{ gradientLevel }}</span>
+                  </span>
+                  <div class="edit__pal">
+                    <div class="edit__pal-tier">
+                      <div class="edit__pal-row">
+                        <label class="pal" :class="{ 'pal--on': !form.gradient }">
+                          <input v-model="form.gradient" type="radio" name="pseudo-g" value="" class="visually-hidden" />
+                          <span class="pal__dot pal__dot--none" />
+                          <span class="visually-hidden">aucun dégradé</span>
+                        </label>
+                        <label
+                          v-for="g in GRADIENTS"
+                          :key="g.id"
+                          class="pal"
+                          :class="{ 'pal--on': form.gradient === g.id, 'pal--locked': !gradientsOpen }"
+                          @mouseenter="hovered = g.id"
+                          @mouseleave="hovered = null"
+                        >
+                          <input
+                            v-model="form.gradient"
+                            type="radio"
+                            name="pseudo-g"
+                            :value="g.id"
+                            :disabled="!gradientsOpen"
+                            class="visually-hidden"
+                          />
+                          <span class="pal__dot pal__dot--grad" :style="gradStyle(g)" />
+                          <span class="visually-hidden">
+                            {{ g.label }}{{ gradientsOpen ? '' : ` — niveau ${g.level}` }}
+                          </span>
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+
+                  <label class="edit__check">
+                    <input v-model="form.animated" type="checkbox" :disabled="!canAnimate" />
+                    <span>
+                      Le faire glisser
+                      <span v-if="!open.animation" class="edit__app-gate mono">niveau {{ ANIMATION_LEVEL }}</span>
+                    </span>
+                  </label>
+                  <p v-if="form.animated" class="field__hint">
+                    Le seul mouvement du site. Il s'arrête de lui-même chez qui a demandé à son
+                    système de réduire les animations.
+                  </p>
+                </div>
+
+                <div class="edit__field">
+                  <span class="field__label">
+                    Cadre d'avatar
+                    <span v-if="!open.ring" class="edit__app-gate mono">niveau {{ RING_LEVEL }}</span>
+                  </span>
+                  <div class="edit__radios">
+                    <label class="edit__radio">
+                      <input v-model="form.ring" type="radio" name="cadre" value="none" />
+                      <span>aucun</span>
+                    </label>
+                    <label class="edit__radio">
+                      <input v-model="form.ring" type="radio" name="cadre" value="color" :disabled="!open.ring" />
+                      <span>ta couleur</span>
+                    </label>
+                    <label class="edit__radio">
+                      <input
+                        v-model="form.ring"
+                        type="radio"
+                        name="cadre"
+                        value="gradient"
+                        :disabled="!open.ringGradient"
+                      />
+                      <span>
+                        dégradé
+                        <span v-if="!open.ringGradient" class="edit__app-gate mono">
+                          niveau {{ RING_GRADIENT_LEVEL }}
+                        </span>
+                      </span>
+                    </label>
+                  </div>
+                </div>
+
+                <div class="field edit__field">
+                  <label for="f-titre" class="field__label">
+                    Titre
+                    <span v-if="!open.title" class="edit__app-gate mono">niveau {{ TITLE_LEVEL }}</span>
+                  </label>
+                  <input
+                    id="f-titre"
+                    v-model="form.title"
+                    type="text"
+                    class="field__input"
+                    :maxlength="TITLE_MAX_LEN"
+                    :disabled="!open.title"
+                    placeholder="gardien du seuil"
+                  />
+                  <p v-if="titleRejected" class="edit__app-refus">
+                    Ce titre se ferait passer pour un rôle du forum. Le bouclier des modérateurs est
+                    un objet à part, et un titre libre ne peut pas l'imiter.
+                  </p>
+                  <p v-else class="field__hint">
+                    Ce que tu t'écris à côté de ton pseudo, {{ TITLE_MAX_LEN }} caractères au plus.
+                  </p>
+                </div>
+              </template>
+            </fieldset>
+
             <!-- Aperçu à la forme réelle : la barre d'auteur d'un post. Une carte
                  de profil générique montrerait un objet qui n'existe nulle part
                  dans ce forum ; ce bandeau-là est ce que les autres verront. -->
             <div class="edit__preview">
               <p class="edit__preview-label">Vu par les autres</p>
               <div class="edit__bar">
-                <span class="edit__bar-author">{{ previewName }}</span>
+                <!-- L'avatar est ici depuis que le cadre existe : sans lui, un
+                     item du catalogue serait invisible au moment où on le choisit. -->
+                <UserAvatar
+                  v-if="identity.pubkey"
+                  :pubkey="identity.pubkey"
+                  :size="26"
+                  v-bind="previewRing"
+                />
+                <span class="edit__bar-author" v-bind="previewPseudo">{{ previewName }}</span>
                 <span v-if="form.name.trim()" class="edit__bar-disc mono">·{{ identity.discriminator }}</span>
+                <span v-if="previewTitle" class="titre-libre">{{ previewTitle }}</span>
                 <span v-if="form.nip05.trim()" class="tag">nip-05 ?</span>
                 <span class="edit__bar-spacer" />
                 <span class="edit__bar-time mono">à {{ previewTime }}</span>
@@ -266,6 +464,23 @@
  */
 import { ref, computed, watch } from 'vue'
 import { npubFor } from '~/utils/nostr'
+import { prepareAvatarGif } from '~/utils/image'
+import {
+  ANIMATION_LEVEL,
+  COLORS,
+  GRADIENTS,
+  GIF_AVATAR_LEVEL,
+  RING_GRADIENT_LEVEL,
+  RING_LEVEL,
+  TITLE_LEVEL,
+  TITLE_MAX_LEN,
+  cleanTitle,
+  colorById,
+  gradientById,
+  grantStyle,
+  unlocks,
+  type RingStyle,
+} from '~/types/nostr'
 
 usePageTitle('Modifier mon profil')
 
@@ -279,9 +494,33 @@ interface Form {
   nip05: string
   website: string
   signature: string
+  /* Apparence (§16.9). Dans le MÊME formulaire que le reste, donc dans le même
+     `dirty` et le même « Publier le profil » : une pastille qui publierait au
+     clic remplacerait le kind 0 une douzaine de fois pendant qu'on regarde, et
+     chaque remplacement est un event poussé sur tous les relais. */
+  color: string
+  gradient: string
+  animated: boolean
+  ring: RingStyle
+  title: string
+  /** L'avatar déposé est un GIF animé (§16.9). Posé par le dépôt, pas à la main. */
+  avatarAnim: boolean
 }
 
-const EMPTY: Form = { name: '', about: '', picture: '', nip05: '', website: '', signature: '' }
+const EMPTY: Form = {
+  name: '',
+  about: '',
+  picture: '',
+  nip05: '',
+  website: '',
+  signature: '',
+  color: '',
+  gradient: '',
+  animated: false,
+  ring: 'none',
+  title: '',
+  avatarAnim: false,
+}
 
 const form = ref<Form>({ ...EMPTY })
 const initial = ref<Form>({ ...EMPTY })
@@ -299,18 +538,185 @@ const hadDisplayName = ref(false)
 
 const npub = computed(() => (identity.pubkey ? npubFor(identity.pubkey) : ''))
 
+/* --------------------------------------------------------------- apparence */
+
+const points = useUserPointsStore()
+
+/** `null` tant qu'on ne sait pas : sans indexeur épinglé, il n'y a pas de niveau. */
+const myLevel = computed(() => (identity.pubkey ? points.levelOf(identity.pubkey) : null))
+const open = computed(() => unlocks(myLevel.value ?? 1))
+
+/**
+ * La palette rangée par palier, **jamais par teinte**.
+ *
+ * Le regroupement encode quelque chose de vrai — c'est une progression, pas un
+ * nuancier — et c'est lui qui transforme la différence de taille des pastilles
+ * en information plutôt qu'en second plan.
+ */
+const colorTiers = computed(() => {
+  const lvl = myLevel.value ?? 1
+  const out: { key: string; open: boolean; label: string; colors: typeof COLORS }[] = []
+  // Tout l'acquis dans UN groupe : deux groupes étiquetés « à toi » côte à côte
+  // ne distinguaient rien et lisaient comme une répétition. Ce qui mérite une
+  // frontière, c'est acquis / pas encore.
+  const acquises = COLORS.filter((c) => c.level <= lvl)
+  if (acquises.length > 0) out.push({ key: 'acquis', open: true, label: 'à toi', colors: acquises })
+  const aVenir = [...new Set(COLORS.filter((c) => c.level > lvl).map((c) => c.level))].sort(
+    (a, b) => a - b,
+  )
+  for (const level of aVenir) {
+    out.push({
+      key: `n${level}`,
+      open: false,
+      label: `niveau ${level}`,
+      colors: COLORS.filter((c) => c.level === level),
+    })
+  }
+  return out
+})
+
+const gradientLevel = GRADIENTS[0]?.level ?? 9
+const gradientsOpen = computed(() => (myLevel.value ?? 1) >= gradientLevel)
+
+/** Survolée, sinon choisie. Les noms sont le propos : ils ne disparaissent jamais. */
+const hovered = ref<string | null>(null)
+const shownColorName = computed(() => {
+  const id = hovered.value ?? form.value.color
+  const c = COLORS.find((x) => x.id === id)
+  if (c) return c.level > (myLevel.value ?? 1) ? `${c.label} — niveau ${c.level}` : c.label
+  const g = GRADIENTS.find((x) => x.id === id)
+  if (g) return g.level > (myLevel.value ?? 1) ? `${g.label} — niveau ${g.level}` : g.label
+  return 'aucune couleur'
+})
+
+/**
+ * La prochaine chose, et rien d'autre.
+ *
+ * Dérouler les cinq paliers à venir donnerait l'écran de progression d'un jeu
+ * mobile ; une phrase est une information.
+ */
+const nextUnlock = computed(() => {
+  const lvl = myLevel.value
+  if (lvl === null) return null
+  const steps: [number, string][] = [
+    [2, 'les six premières couleurs'],
+    [TITLE_LEVEL, 'les couleurs vives et le titre libre'],
+    [RING_LEVEL, "le cadre d'avatar"],
+    [RING_GRADIENT_LEVEL, 'les dégradés'],
+    [ANIMATION_LEVEL, 'le dégradé animé'],
+    [GIF_AVATAR_LEVEL, "l'avatar animé"],
+  ]
+  const next = steps.find(([at]) => lvl < at)
+  return next ? `le niveau ${next[0]} ouvre ${next[1]}` : 'tout est ouvert'
+})
+
+/** Les deux thèmes partent ensemble : c'est le CSS qui tranche (voir `main.css`). */
+function dotStyle(c: { light: string; dark: string }): Record<string, string> {
+  return { '--pseudo-l': c.light, '--pseudo-d': c.dark }
+}
+
+function gradStyle(g: { light: string[]; dark: string[] }): Record<string, string> {
+  return { '--grad-l': g.light.join(', '), '--grad-d': g.dark.join(', ') }
+}
+
+/**
+ * Le titre est refusé, et on dit pourquoi.
+ *
+ * `cleanTitle` rend `null` sur un titre qui usurpe une autorité du forum. Le
+ * taire laisserait publier un champ qui disparaît au rendu — donc un bug, du
+ * point de vue de la personne.
+ */
+const titleRejected = computed(
+  () => form.value.title.trim().length > 0 && cleanTitle(form.value.title) === null,
+)
+
+/** L'animation n'anime qu'un dégradé : sans dégradé choisi, la case ne sert à rien. */
+const canAnimate = computed(() => open.value.animation && !!form.value.gradient)
+
+/**
+ * Ce que l'aperçu montre : l'apparence **accordée** au formulaire en cours, pas
+ * celle du profil publié.
+ *
+ * La différence compte : on veut voir ce qu'on vient de choisir, et on veut le
+ * voir passer par le même portier que les autres lecteurs — donc une couleur
+ * revendiquée trop haut ne s'affiche pas ici non plus, plutôt que de mentir
+ * jusqu'à la publication.
+ */
+const previewStyle = computed(() =>
+  grantStyle(
+    {
+      color: form.value.color || null,
+      gradient: form.value.gradient || null,
+      animated: form.value.animated,
+      ring: form.value.ring,
+      title: cleanTitle(form.value.title),
+      avatarAnim: form.value.avatarAnim,
+    },
+    myLevel.value ?? 1,
+  ),
+)
+
+const previewTitle = computed(() => previewStyle.value.title)
+
+const previewPseudo = computed<Record<string, unknown>>(() => {
+  const g = gradientById(previewStyle.value.gradient)
+  if (g) {
+    return {
+      class: ['pseudo--degrade', previewStyle.value.animated ? 'pseudo--anime' : null],
+      style: gradStyle(g),
+    }
+  }
+  const c = colorById(previewStyle.value.color)
+  return c ? { class: 'pseudo--couleur', style: dotStyle(c) } : {}
+})
+
+const previewRing = computed<Record<string, unknown>>(() => {
+  const s = previewStyle.value
+  if (s.ring === 'none') return {}
+  const g = gradientById(s.gradient)
+  if (s.ring === 'gradient' && g) return { class: 'cadre--degrade', style: gradStyle(g) }
+  const c = colorById(s.color)
+  return c ? { class: 'cadre--couleur', style: dotStyle(c) } : {}
+})
+
 const upload = useAvatarUpload()
 
 /** Le fichier en cours de cadrage. Non nul = le cadreur est ouvert. */
 const picking = ref<File | null>(null)
 
-function onPick(e: Event): void {
+async function onPick(e: Event): Promise<void> {
   const input = e.target as HTMLInputElement
   const file = input.files?.[0]
   // Le champ est remis à zéro tout de suite : sans ça, rechoisir le même fichier
   // après une annulation ou un échec ne déclencherait aucun `change`.
   input.value = ''
-  if (file) picking.value = file
+  if (!file) return
+
+  /*
+   * Un GIF ne passe PAS par le cadreur (§16.9) : celui-ci recadre au canevas, et
+   * un canevas ne garde que la première image — le recadrage tuerait exactement
+   * ce qu'on est venu chercher. Il part donc tel quel, et le carré est fait à
+   * l'affichage par `object-fit`.
+   */
+  if (file.type === 'image/gif') {
+    if (!open.value.gifAvatar) {
+      upload.error.value = `L'avatar animé s'ouvre au niveau ${GIF_AVATAR_LEVEL}. Une image fixe, en revanche, marche tout de suite.`
+      return
+    }
+    try {
+      const prepared = await prepareAvatarGif(file)
+      const url = await upload.upload(prepared.blob, prepared.type)
+      if (url) {
+        form.value.picture = url
+        form.value.avatarAnim = true
+      }
+    } catch (err) {
+      upload.error.value = err instanceof Error ? err.message : 'ce GIF n’a pas pu être lu'
+    }
+    return
+  }
+
+  picking.value = file
 }
 
 /**
@@ -321,10 +727,16 @@ function onPick(e: Event): void {
 async function onCropped(blob: Blob, type: string): Promise<void> {
   picking.value = null
   const url = await upload.upload(blob, type)
-  if (url) form.value.picture = url
+  if (url) {
+    form.value.picture = url
+    // Une image fixe remplace un GIF : laisser la marque d'animation ferait
+    // décoder une première image qui n'existe pas, à chaque vignette.
+    form.value.avatarAnim = false
+  }
 }
 
 function clearPicture(): void {
+  form.value.avatarAnim = false
   upload.clearPreview()
   form.value.picture = ''
 }
@@ -423,6 +835,12 @@ async function loadCurrent(): Promise<void> {
     nip05: str(raw.nip05).slice(0, 200),
     website: str(raw.website).slice(0, 300),
     signature: str(raw.forome_signature).slice(0, 150),
+    color: str(raw.forome_color).slice(0, 40),
+    gradient: str(raw.forome_gradient).slice(0, 40),
+    animated: raw.forome_anim === '1',
+    ring: raw.forome_ring === 'color' || raw.forome_ring === 'gradient' ? raw.forome_ring : 'none',
+    title: str(raw.forome_title).slice(0, TITLE_MAX_LEN),
+    avatarAnim: raw.forome_avatar_anim === '1',
   }
   form.value = { ...next }
   initial.value = { ...next }
@@ -448,6 +866,14 @@ async function submit(): Promise<void> {
       nip05: form.value.nip05,
       website: form.value.website,
       forome_signature: form.value.signature,
+      // Chaîne vide = clé retirée du kind 0 (voir `publishPatch`) : « aucune
+      // couleur » ne laisse donc pas un champ orphelin derrière lui.
+      forome_color: form.value.color,
+      forome_gradient: form.value.gradient,
+      forome_anim: form.value.animated ? '1' : '',
+      forome_ring: form.value.ring === 'none' ? '' : form.value.ring,
+      forome_title: form.value.title,
+      forome_avatar_anim: form.value.avatarAnim ? '1' : '',
     }
     if (hadDisplayName.value) patch.display_name = form.value.name
 
@@ -515,6 +941,178 @@ watch(() => identity.pubkey, () => void loadCurrent(), { immediate: true })
   resize: vertical;
   min-height: 68px;
   line-height: 1.5;
+}
+
+/* ----------------------------------------------------------------- apparence
+ * Un formulaire, jamais une boutique. Deux règles portent tout :
+ *
+ *   1. **aucun cadenas, aucun grisé.** Les couleurs qu'on n'a pas encore sont
+ *      montrées dans leur VRAIE couleur, en plus petit. Griser détruirait la
+ *      seule chose qui motive — voir ce qu'on vise — et un cadenas a le
+ *      vocabulaire du paiement. La taille dit la disponibilité.
+ *   2. **le nom est toujours affiché.** « Le mec au pseudo cramoisi » est une
+ *      phrase que les gens diront ; une pastille anonyme ne la produit pas.
+ */
+.edit__app {
+  margin: 0 0 14px;
+  padding: 13px 14px 4px;
+  border: 0;
+  background: var(--surface-sunken);
+  border-radius: var(--r-control);
+}
+.edit__app-legend {
+  padding: 0;
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  color: var(--ink);
+}
+.edit__app-level {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  align-items: baseline;
+  margin: 0 0 14px;
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+}
+.edit__app-link {
+  margin-left: auto;
+  color: var(--link);
+}
+.edit__app-empty {
+  margin: 0 0 12px;
+  font-size: var(--fs-md);
+  line-height: 1.55;
+  color: var(--ink-4);
+}
+/* Le palier qui manque, dans le registre de la provenance : un nombre, pas une
+   promesse commerciale. */
+.edit__app-gate {
+  margin-left: 6px;
+  font-size: var(--fs-xs);
+  font-weight: 400;
+  color: var(--ink-4);
+}
+.edit__app-refus {
+  margin: 5px 0 0;
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  color: var(--warn);
+}
+
+.edit__pal {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-top: 6px;
+}
+.edit__pal-tier {
+  min-width: 0;
+}
+.edit__pal-label {
+  margin: 0 0 5px;
+  font-size: var(--fs-xs);
+  color: var(--ink-4);
+}
+.edit__pal-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.edit__pal-name {
+  margin: 9px 0 0;
+  font-size: var(--fs-md);
+  color: var(--ink-2);
+}
+
+.pal {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.pal__dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background-color: var(--pseudo-couleur, var(--ink-4));
+  transition: width 0.12s ease, height 0.12s ease;
+}
+.pal__dot--grad {
+  background-color: transparent;
+  background-image: linear-gradient(135deg, var(--grad-l));
+}
+/* « aucune » : un anneau creux, pas une pastille grise — l'absence de couleur
+   est un choix, pas une couleur éteinte. */
+.pal__dot--none {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--line-strong);
+}
+/* La taille EST l'affordance : pas encore à toi, donc plus petit. */
+.pal--locked .pal__dot {
+  width: 15px;
+  height: 15px;
+}
+.pal--locked {
+  cursor: not-allowed;
+}
+.pal--on {
+  box-shadow: 0 0 0 2px var(--surface), 0 0 0 3px var(--ink-3);
+}
+.pal:focus-within {
+  box-shadow: var(--ring);
+}
+@media (prefers-reduced-motion: reduce) {
+  .pal__dot {
+    transition: none;
+  }
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .pal__dot--grad {
+    background-image: linear-gradient(135deg, var(--grad-d));
+  }
+}
+:root[data-theme='dark'] .pal__dot--grad {
+  background-image: linear-gradient(135deg, var(--grad-d));
+}
+
+.edit__check,
+.edit__radio {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-md);
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.edit__check {
+  margin-top: 10px;
+}
+.edit__radios {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-top: 6px;
+}
+.edit__check input:disabled + span,
+.edit__radio input:disabled + span {
+  color: var(--ink-4);
+  cursor: not-allowed;
+}
+
+/* La glace ne doit pas quitter l'écran pendant qu'on choisit : au téléphone,
+   choisir une couleur sans voir son pseudo revient à choisir à l'aveugle. */
+@media (max-width: 700px) {
+  .edit__preview {
+    position: sticky;
+    bottom: 0;
+    z-index: 1;
+    margin-bottom: 0;
+    padding: 8px 0;
+    background: var(--surface);
+  }
 }
 
 /* ------------------------------------------------------------ photo de profil */
@@ -626,11 +1224,13 @@ watch(() => identity.pubkey, () => void loadCurrent(), { immediate: true })
   box-shadow: var(--elev-1);
   font-size: var(--fs-sm);
 }
+/* Même contrat que dans le fil : la couleur vient de `--pseudo-couleur` quand
+   l'apparence en pose une, du bleu de l'interface sinon (voir `main.css`). */
 .edit__bar-author {
   font-weight: 700;
   font-size: var(--fs-base);
   letter-spacing: -0.01em;
-  color: var(--link);
+  color: var(--pseudo-couleur, var(--link));
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

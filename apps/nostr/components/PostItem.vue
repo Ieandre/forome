@@ -26,7 +26,14 @@
          était l'anatomie phpBB, et elle creusait une colonne vide sous chaque
          message court. -->
     <div v-if="!compact" class="msg__aside">
-      <UserAvatar :pubkey="post.pubkey" :size="30" :alt="`avatar de ${profiles.displayName(post.pubkey)}`" />
+      <!-- Le cadre gagné se pose sur la vignette, photo ou identicon : c'est le
+           seul axe d'apparence du fil qu'une photo de profil n'efface pas (§16.9). -->
+      <UserAvatar
+        :pubkey="post.pubkey"
+        :size="30"
+        :alt="`avatar de ${profiles.displayName(post.pubkey)}`"
+        v-bind="post.anon ? {} : apparence.ringBind(post.pubkey)"
+      />
     </div>
 
     <!-- Barre d'auteur : qui, quand, nº du post. Convention forum, jamais chat
@@ -45,7 +52,11 @@
         <span class="msg__author msg__author--anon">{{ anonName(post.pubkey) }}</span>
       </Explain>
       <Hint v-else :text="`profil de ${profiles.displayName(post.pubkey)}`">
-        <NuxtLink :to="`/profil/${npub}`" class="msg__author">
+        <!-- L'apparence est **accordée**, pas revendiquée : `useApparence`
+             confronte ce que le kind 0 déclare à ce que le niveau ouvre. Le
+             kind 0 est signé par la personne, donc sans ce filtre une clé neuve
+             s'offrirait l'arc-en-ciel (§16.9). -->
+        <NuxtLink :to="`/profil/${npub}`" class="msg__author" v-bind="apparence.pseudoBind(post.pubkey)">
           {{ profiles.displayName(post.pubkey) }}
         </NuxtLink>
       </Hint>
@@ -64,6 +75,11 @@
            est une ligne d'aperçu. Absent en anonyme : une clé par topic ne
            capitalise pas (§3.7). -->
       <LevelMark v-if="!post.anon && !compact" :pubkey="post.pubkey" />
+
+      <!-- Le titre qu'on s'écrit soi-même. Dans le registre de la provenance et
+           jamais en pastille : une pastille dirait « rôle accordé par le forum »,
+           ce qu'un titre libre n'est précisément pas. -->
+      <span v-if="!post.anon && !compact && freeTitle" class="titre-libre">{{ freeTitle }}</span>
 
       <!-- NIP-05 réellement vérifié (§3.5). « Injoignable » n'est pas
            « invalide » : un domaine muet ne prouve rien, et on le dit. -->
@@ -466,6 +482,10 @@ const emit = defineEmits<{
 }>()
 
 const profiles = useProfileStore()
+const apparence = useApparence()
+
+/** Le titre libre accordé à cet auteur, s'il en a gagné un (§16.9). */
+const freeTitle = computed(() => (props.post.anon ? null : apparence.titleOf(props.post.pubkey)))
 const social = useSocialStore()
 const topics = useTopicStore()
 const mod = useModerationStore()
@@ -804,11 +824,15 @@ function copyPermalink(): void {
 
 /* Le pseudo est bleu : l'identité est du même ordre que « où tu es » — c'est un
    lien vers quelqu'un, et c'est le seul lien de la barre. */
+/* `--pseudo-couleur` est posée par l'apparence gagnée (voir `main.css`) ; sans
+   elle, le bleu de l'interface. Passer par une variable évite la guerre de
+   spécificité entre ce CSS scopé et une classe globale. */
 .msg__author {
+  flex-shrink: 0;
   font-weight: 700;
   font-size: var(--fs-base);
   letter-spacing: -0.01em;
-  color: var(--link);
+  color: var(--pseudo-couleur, var(--link));
   text-decoration: none !important;
   white-space: nowrap;
   overflow: hidden;
@@ -831,6 +855,22 @@ function copyPermalink(): void {
 }
 .msg--anon .msg__rail {
   background: color-mix(in srgb, var(--ink-4) 45%, transparent);
+}
+
+/* Le titre libre cède AVANT le pseudo.
+   Sans ça, une bande chargée (pseudo + discriminant + niveau + titre + « auteur
+   du topic » + « toi ») tronquait le pseudo à huit caractères pour garder un
+   titre entier — soit exactement l'inverse de la hiérarchie : le pseudo est ce
+   qui identifie, le titre est ce qu'on s'écrit. Il disparaît même complètement
+   dans une colonne étroite. */
+.titre-libre {
+  max-width: 13ch;
+  flex-shrink: 6;
+}
+@media (max-width: 560px) {
+  .titre-libre {
+    display: none;
+  }
 }
 
 .msg__disc {

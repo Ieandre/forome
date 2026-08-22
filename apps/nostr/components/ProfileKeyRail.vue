@@ -1,6 +1,12 @@
 <template>
   <aside class="keyrail">
-    <UserAvatar :pubkey="pubkey" :size="88" class="keyrail__av" :alt="`avatar de ${declaredName || handle}`" />
+    <UserAvatar
+      :pubkey="pubkey"
+      :size="88"
+      class="keyrail__av"
+      :alt="`avatar de ${declaredName || handle}`"
+      v-bind="apparence.ringBind(pubkey)"
+    />
 
     <!-- Un seul nom à l'écran. Le handle `khey_` n'est pas une seconde identité,
          c'est le nom affiché tant que personne n'a choisi de pseudo (§3.1) : dès
@@ -71,6 +77,7 @@ const props = defineProps<{
 
 const { copied, copy } = useCopy()
 
+const apparence = useApparence()
 const handle = computed(() => kheyHandle(props.pubkey))
 const npub = computed(() => npubFor(props.pubkey))
 

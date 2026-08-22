@@ -53,6 +53,20 @@
 import { ref, computed, watch } from 'vue'
 import { avatarSrc } from '~/utils/media'
 
+/**
+ * Première image d'un avatar animé, par URL.
+ *
+ * Portée module : une vignette gelée sert la liste, le fil, les notifications et
+ * la page de profil. Sans ce cache, la même image serait décodée une fois par
+ * rangée — et ce fichier existe précisément pour ne pas faire chauffer un
+ * téléphone (§16.9).
+ */
+const premiereImage = new Map<string, string>()
+
+/** `prefers-reduced-motion`, une fois pour toute l'app. */
+const mouvementReduit = ref(false)
+let mrStarted = false
+
 const props = withDefaults(
   defineProps<{
     pubkey: string
@@ -70,14 +84,86 @@ const props = withDefaults(
 )
 
 const profiles = useProfileStore()
+const apparence = useApparence()
 const failed = ref(false)
 
+if (import.meta.client && !mrStarted) {
+  mrStarted = true
+  const mq = window.matchMedia('(prefers-reduced-motion: reduce)')
+  mouvementReduit.value = mq.matches
+  mq.addEventListener('change', (e) => (mouvementReduit.value = e.matches))
+}
+
 const masked = computed(() => props.mask || profiles.isAnonKey(props.pubkey))
-const src = computed(() => avatarSrc(profiles.get(props.pubkey)?.picture))
+const brut = computed(() => avatarSrc(profiles.get(props.pubkey)?.picture))
+
+/**
+ * Faut-il figer cette vignette ?
+ *
+ * Deux cas, et le second n'est pas négociable :
+ *   - l'animation est **revendiquée sans être gagnée** (le kind 0 est signé par
+ *     la personne, donc rien n'empêche de la déclarer — §16.9) ;
+ *   - le lecteur a demandé à son système de **réduire les animations**. Pour
+ *     certaines personnes une image qui clignote est un déclencheur, pas une
+ *     décoration, et aucun palier ne passe devant ça.
+ */
+const aFiger = computed(() => {
+  const revendique = profiles.get(props.pubkey)?.style.avatarAnim ?? false
+  if (!revendique) return false
+  return mouvementReduit.value || !apparence.styleOf(props.pubkey).avatarAnim
+})
+
+const gelee = ref<string | null>(null)
+
+/**
+ * Peint la première image sur un canevas.
+ *
+ * `createImageBitmap` d'un GIF ne rend que sa première image — c'est la même
+ * propriété qui interdit de recadrer un GIF sans le tuer (`utils/image.ts`), et
+ * ici elle sert. Aucun décodage côté serveur, aucune bibliothèque.
+ *
+ * L'échec est silencieux et sans conséquence : on retombe sur l'image animée,
+ * c'est-à-dire sur ce que le navigateur aurait affiché de toute façon.
+ */
+async function figer(url: string): Promise<void> {
+  const connu = premiereImage.get(url)
+  if (connu) {
+    gelee.value = connu
+    return
+  }
+  try {
+    const blob = await fetch(url).then((r) => r.blob())
+    const bitmap = await createImageBitmap(blob)
+    const canvas = document.createElement('canvas')
+    canvas.width = bitmap.width
+    canvas.height = bitmap.height
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    ctx.drawImage(bitmap, 0, 0)
+    bitmap.close()
+    const data = canvas.toDataURL('image/webp', 0.9)
+    if (premiereImage.size > 300) premiereImage.clear()
+    premiereImage.set(url, data)
+    gelee.value = data
+  } catch {
+    // tant pis : l'image animée reste, et elle est lisible
+  }
+}
+
+watch(
+  [brut, aFiger],
+  ([url, fige]) => {
+    gelee.value = null
+    if (url && fige && import.meta.client) void figer(url)
+  },
+  { immediate: true },
+)
+
+const src = computed(() => (aFiger.value ? (gelee.value ?? brut.value) : brut.value))
 const box = computed(() => ({ width: `${props.size}px`, height: `${props.size}px` }))
 
 // Un kind 0 est remplaçable : si la photo change, l'échec précédent ne vaut plus.
-watch(src, () => (failed.value = false))
+watch(brut, () => (failed.value = false))
 </script>
 
 <style scoped>
@@ -97,6 +183,41 @@ watch(src, () => (failed.value = false))
 }
 .avatar--round {
   border-radius: var(--r-control);
+}
+
+/* ------------------------------------------------------------------- cadre
+ * Le cadre gagné (spec §16.9). C'est le seul axe d'apparence visible dans le fil
+ * qu'une photo de profil n'efface pas — d'où sa place au milieu de l'échelle des
+ * paliers, et d'où sa place ICI : la vignette est le seul objet qui connaisse sa
+ * propre géométrie.
+ *
+ * Le remplissage est **inset** (`box-sizing: border-box`) : l'empreinte reste
+ * exactement celle d'une vignette nue, donc le rythme d'une liste dense ne bouge
+ * pas selon que ses rangées portent un cadre ou non. Un anneau posé à l'extérieur
+ * (`box-shadow`) aurait décalé chaque rangée qui en porte un — et se serait fait
+ * rogner par le premier parent en `overflow: hidden`.
+ *
+ * Le fond est peint sous le rembourrage (`background-clip: border-box`, le
+ * défaut) et le contenu remplacé de l'image ne couvre que la boîte de contenu :
+ * l'anneau apparaît, sans élément supplémentaire ni pseudo-élément — dont un
+ * `<img>` n'a pas.
+ *
+ * Les sélecteurs sont volontairement à une seule classe, et posés APRÈS
+ * `.avatar` : la vignette d'un identicon porte `.identicon` et non `.avatar`, et
+ * un sélecteur composé n'aurait attrapé que la moitié des cas.
+ */
+.cadre--couleur,
+.cadre--degrade {
+  box-sizing: border-box;
+  padding: 2px;
+}
+.cadre--couleur {
+  background-image: none;
+  background-color: var(--cadre-actif);
+}
+.cadre--degrade {
+  background-color: transparent;
+  background-image: linear-gradient(135deg, var(--grad-actif));
 }
 /* Tireté, comme le composeur en mode anonyme : le même trait aux deux moments,
    écrire et relire. Gris, là où le pseudo d'un compte est bleu et l'auteur d'un

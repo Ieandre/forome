@@ -8,7 +8,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./ledger": "./src/ledger.ts",
-    "./payload": "./src/payload.ts"
+    "./payload": "./src/payload.ts",
+    "./apparence": "./src/apparence.ts"
   },
   "scripts": {
     "test": "vitest run",

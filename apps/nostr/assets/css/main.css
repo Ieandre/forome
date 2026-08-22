@@ -738,6 +738,132 @@ kbd {
  * halo + respiration). Un forum calme n'affiche donc aucune lumière, et c'est
  * la bonne réponse — l'écran ne doit pas crier quand il n'y a rien à dire.
  */
+/* ------------------------------------------------------- apparence gagnée
+ * Les customisations de pseudo (spec §16.9). Elles ne sont posées que sur ce
+ * qu'un niveau a réellement ouvert — le portier est `composables/useApparence`,
+ * jamais le CSS.
+ *
+ * ## Le contrat, et pourquoi il passe par une variable
+ *
+ * Chaque endroit qui rend un pseudo écrit `color: var(--pseudo-couleur, <son
+ * défaut>)`. Rien d'autre. Les classes ci-dessous ne font que **définir cette
+ * variable**, elles ne posent jamais `color` elles-mêmes.
+ *
+ * Raison : la couleur d'un pseudo est déclarée dans le CSS *scopé* de chaque
+ * composant (`.msg__author[data-v-…]`), qui bat une classe globale à la fois en
+ * spécificité et en ordre. Une classe qui poserait `color` ne gagnerait qu'à
+ * coups de `!important` ou de sélecteurs triplés. Une variable, elle, n'est
+ * disputée par personne.
+ *
+ * ## Les deux thèmes voyagent ensemble
+ *
+ * Le composable envoie `--pseudo-l` ET `--pseudo-d` en style inline, et c'est
+ * ICI qu'on choisit — par les mêmes sélecteurs de thème que le reste du fichier.
+ * Résoudre en JS aurait figé la valeur du thème actif au moment du rendu, et un
+ * pseudo cramoisi choisi en clair serait resté illisible après la bascule.
+ */
+.pseudo--couleur {
+  --pseudo-couleur: var(--pseudo-l);
+}
+/* `color: transparent` sur l'élément, pour que le texte laisse voir le dégradé
+   découpé à sa forme. Passe par la même variable, donc sans lutte de priorité. */
+.pseudo--degrade {
+  --pseudo-couleur: transparent;
+  background-image: linear-gradient(95deg, var(--grad-l));
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+/* Repli : sans découpe à la forme du texte, `transparent` rendrait le pseudo
+   invisible. On rend alors le premier arrêt en aplat de texte — moins joli,
+   lisible. */
+@supports not ((-webkit-background-clip: text) or (background-clip: text)) {
+  .pseudo--degrade {
+    --pseudo-couleur: var(--pseudo-l, currentColor);
+    background-image: none;
+  }
+}
+
+.pseudo--anime {
+  animation: pseudo-glisse 6s linear infinite;
+}
+@keyframes pseudo-glisse {
+  from {
+    background-position: 0% 50%;
+  }
+  to {
+    background-position: 220% 50%;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .pseudo--couleur {
+    --pseudo-couleur: var(--pseudo-d);
+  }
+  :root:not([data-theme='light']) .pseudo--degrade {
+    background-image: linear-gradient(95deg, var(--grad-d));
+  }
+}
+:root[data-theme='dark'] .pseudo--couleur {
+  --pseudo-couleur: var(--pseudo-d);
+}
+:root[data-theme='dark'] .pseudo--degrade {
+  background-image: linear-gradient(95deg, var(--grad-d));
+}
+
+/* Le seul mouvement du site, et quelqu'un qui a réglé son système pour ne plus
+   en avoir a une raison — pour certaines personnes, du texte qui scintille est
+   un déclencheur, pas une décoration. Le dégradé reste, il cesse de glisser. */
+@media (prefers-reduced-motion: reduce) {
+  .pseudo--anime {
+    animation: none;
+  }
+}
+
+/* Le cadre d'avatar : seule la RÉSOLUTION de thème est ici ; le dessin vit dans
+   `UserAvatar.vue`, qui est le seul endroit à connaître la géométrie d'une
+   vignette. Deux variables séparées de celles du pseudo, parce qu'un cadre et un
+   texte ne se découpent pas pareil — `.pseudo--degrade` met `color: transparent`,
+   ce qui n'a aucun sens sur une image. */
+.cadre--couleur {
+  --cadre-actif: var(--pseudo-l);
+}
+.cadre--degrade {
+  --grad-actif: var(--grad-l);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .cadre--couleur {
+    --cadre-actif: var(--pseudo-d);
+  }
+  :root:not([data-theme='light']) .cadre--degrade {
+    --grad-actif: var(--grad-d);
+  }
+}
+:root[data-theme='dark'] .cadre--couleur {
+  --cadre-actif: var(--pseudo-d);
+}
+:root[data-theme='dark'] .cadre--degrade {
+  --grad-actif: var(--grad-d);
+}
+
+/* Le titre libre : registre de la provenance (mono, encre faible), jamais celui
+   des pastilles. Un titre qu'on s'écrit soi-même ne doit pas pouvoir se faire
+   passer pour un rôle accordé par le forum. */
+.titre-libre {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: -0.01em;
+  color: var(--ink-4);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* 24ch = la borne du titre (`TITLE_MAX_LEN`), donc la coupure ne se déclenche
+     jamais : elle n'est là que comme garde-fou si la borne changeait. Clampé plus
+     court, l'éditeur cachait précisément ce qu'on est en train d'écrire. */
+  max-width: 24ch;
+  flex-shrink: 1;
+}
+
 .heat {
   position: relative;
   width: 3px;

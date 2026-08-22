@@ -82,6 +82,13 @@
         {{ theme.isDark.value ? 'Thème clair' : 'Thème sombre' }}
       </button>
 
+      <!-- Il vit ICI et pas dans l'éditeur d'apparence : il parle de ce que TU
+           vois, pas de ce que tu es — même catégorie que le thème. Dans
+           l'éditeur, personne n'irait le chercher (§16.9). -->
+      <button type="button" class="um__item um__item--theme" @click="apparence.toggle()">
+        {{ apparence.enabled.value ? 'Masquer les couleurs de pseudo' : 'Afficher les couleurs de pseudo' }}
+      </button>
+
       <!-- L'entrée n'apparaît que si la clé est au roster signé du forum : ce
            n'est pas une case à cocher, c'est une propriété vérifiée. -->
       <NuxtLink v-if="mod.amStaff" to="/admin" class="um__item um__item--staff" @click="open = false">
@@ -137,6 +144,7 @@ const profiles = useProfileStore()
 const mod = useModerationStore()
 const theme = useTheme()
 const points = useUserPointsStore()
+const apparence = useApparence()
 
 const open = ref(false)
 const confirming = ref(false)

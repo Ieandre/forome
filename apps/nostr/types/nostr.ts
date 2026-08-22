@@ -7,6 +7,7 @@
  * classique de la couche qui touche au protocole.
  */
 import type { Event } from 'nostr-tools/core'
+import type { StyleClaim } from '@forome/points/apparence'
 import type { ImageMeta } from '~/utils/media'
 
 export type NostrEvent = Event
@@ -33,6 +34,33 @@ export {
  * forum où l'on publie sans jamais se voir.
  */
 export { COMMUNITY, communityTag, communityFilter, inCommunity } from '@forome/relay-policy'
+
+/**
+ * Catalogue d'apparence, réexporté du code partagé pour la même raison que les
+ * révisions : l'éditeur qui *propose* un palier et le fil qui l'*accorde*
+ * doivent lire la même table. Deux copies produiraient une couleur choisie que
+ * personne ne verrait, ou pire, vue sans avoir été gagnée.
+ */
+export type { StyleClaim, RingStyle } from '@forome/points/apparence'
+export {
+  COLORS,
+  GRADIENTS,
+  STYLE_FIELDS,
+  EMPTY_STYLE,
+  TITLE_LEVEL,
+  TITLE_MAX_LEN,
+  RING_LEVEL,
+  RING_GRADIENT_LEVEL,
+  ANIMATION_LEVEL,
+  GIF_AVATAR_LEVEL,
+  colorById,
+  gradientById,
+  grantStyle,
+  readStyle,
+  cleanTitle,
+  isPlainStyle,
+  unlocks,
+} from '@forome/points/apparence'
 
 /**
  * Format des sondages (NIP-88), réexporté depuis le code partagé pour la même
@@ -208,6 +236,12 @@ export interface Profile {
    * légitimement lire comme un champ cryptographique par un autre client.
    */
   signature: string | null
+  /**
+   * Apparence **revendiquée** (spec §16.9). Déclarative : la personne signe son
+   * propre kind 0, donc n'importe qui peut réclamer un pseudo arc-en-ciel. Ce
+   * qui s'affiche passe par `grantStyle`, chez le lecteur, avec ses points.
+   */
+  style: StyleClaim
 }
 
 /**

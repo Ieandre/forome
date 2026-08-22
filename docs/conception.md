@@ -1076,3 +1076,175 @@ vide, la culture n'existe pas.
   ses habitués. Mais une technologie qui **sert**
   cette culture (zéro friction, tempo respecté, folklore transmis) devient
   indissociable d'elle, et c'est ça qui devient impossible à copier
+
+---
+
+## 16. Points et niveaux
+
+Section ajoutée après coup, et posée en fin de document plutôt qu'à sa place
+logique (elle irait après §11, l'identité) : les numéros de section sont cités
+depuis le code par dizaines, et les décaler pour une insertion transformerait
+chaque renvoi en fausse piste.
+
+### 16.1 Le problème, qui n'est pas celui qu'on croit
+
+Un forum classique tient un compteur : la ligne de l'utilisateur en base porte
+son nombre de messages, et le niveau s'en déduit. **Rien de tout ça n'existe
+ici.** Il n'y a ni inscription, ni ligne, ni serveur qui aurait vu passer une
+identité — une clé publique est une clé publique. Un score ne peut donc être
+qu'un **pli sur les events**, tenu par un programme qui voit tout le trafic.
+
+C'est exactement le piège du §5.4, transposé d'un classement à un nombre
+cumulatif : un client qui compterait lui-même ne verrait que ce qui est passé
+devant lui depuis son ouverture, donc deux lecteurs afficheraient deux scores
+différents pour la même personne, sans qu'aucun des deux puisse savoir lequel est
+faux. Pour un classement, le repli local est acceptable (§5.2) ; pour un score,
+il ne l'est pas.
+
+D'où la répartition retenue :
+
+| | |
+|---|---|
+| **l'indexeur compte** | il est le seul à tout voir. Il publie les points comme des events remplaçables signés, exactement comme le tick |
+| **le client dérive** | le **niveau** se calcule des points chez le lecteur, par le barème partagé (`@forome/points`) |
+
+Le bénéfice de la coupure est concret : retoucher la courbe des niveaux ne
+demande ni redéploiement de l'indexeur ni recomptage, et la clé de
+l'infrastructure gagne le pouvoir de compter sans gagner celui de décider des
+paliers.
+
+### 16.2 Ce que les points récompensent
+
+Deux blocs volontairement déséquilibrés — **ce qu'on fait est le plancher, ce
+qu'on provoque est le score** :
+
+| Ce que tu fais | |
+|---|---|
+| ouvrir un topic | +5 |
+| répondre | +1 |
+| avoir posté ce jour-là | +2, une fois par jour |
+
+| Ce que tu provoques | |
+|---|---|
+| une personne distincte répond à ton message | +2, une fois par personne |
+| une personne distincte vient parler dans ton topic | +3, une fois par personne |
+| ton topic rassemble du monde (trois participants dans la fenêtre de §5.3) | +10, une fois par topic |
+| quelqu'un vote à ton sondage | +1, une fois par personne |
+
+Répondre deux cents fois dans la journée rapporte donc moins qu'ouvrir un fil où
+douze personnes viennent parler. Ce n'est pas un réglage, c'est la thèse : **un
+score au volume travaillerait contre le tri par vélocité (§5.3) et contre la
+détection de raid (§9.5)**, qui existent tous les deux pour que le débit ne soit
+pas une monnaie.
+
+Il n'y a par ailleurs **aucun signal de qualité** à convertir — pas de kind 7,
+donc ni « j'aime » ni vote positif (§14). La réception se lit dans les réponses
+reçues et dans les gens qu'un topic rassemble, ce qui est plus coûteux à truquer
+qu'un bouton.
+
+### 16.3 Les garde-fous, sans lesquels le système meurt en une nuit
+
+- **plafond quotidien : 40 points.** Un habitué l'atteint sans y penser, une
+  ferme n'accélère pas. Il fait bien plus que borner : il **transforme le niveau
+  en durée minimale** — aucune activité, aucun CPU loué et aucune collusion ne va
+  plus vite, donc le niveau 20 réclame au moins 119 jours *quoi qu'on fasse*.
+  C'est ce qui rend un niveau élevé lisible.
+- **un seul crédit par couple** (qui crédite, ce qui est crédité) : le pote qui
+  répond cinquante fois compte une fois.
+- **seuil pour créditer : 10 points.** Une clé neuve ne fabrique pas de valeur,
+  donc une ferme de clés neuves non plus. Le système s'amorce quand même, puisque
+  poster rapporte : à forum vide, personne ne crédite personne pendant les
+  premiers messages, puis tout se débloque.
+- **jamais de crédit à soi-même**, sinon se répondre est le meilleur placement du
+  forum.
+- le crédit est **consommé même quand le plafond du jour absorbe le gain** —
+  sinon il suffirait d'attendre demain pour le rejouer, et le plafond ne serait
+  qu'un étalement.
+
+Deux effets de bord n'ont pas besoin de règle : le **mode anonyme** (§3.7)
+utilise une clé par topic, qui ne capitalise donc jamais ; et les **révisions**
+(§2.5) sont écartées par la même fonction partagée que le tick.
+
+### 16.4 La courbe : infinie, et arithmétique
+
+Passer du niveau *n* au niveau *n+1* coûte **25 × *n*** points. Les niveaux sont
+donc infinis et se paient de plus en plus cher sans jamais devenir
+inatteignables : niveau 2 à 25 points, 5 à 250, 10 à 1 125, 20 à 4 750, 50 à
+30 625. Une courbe linéaire ferait arriver le niveau 40 en trois mois et le
+rendrait muet ; une exponentielle bloquerait tout le monde au même palier.
+
+L'incrément arithmétique a un troisième mérite : il se dit en une phrase — « le
+niveau 5 coûte 100 points de plus que le niveau 4 » — ce qui rend une barre de
+progression explicable au lecteur au lieu d'être un remplissage magique.
+
+Pas de paliers nommés. Un nom de palier est une **fiction sur la personne**
+(« vétéran », « pilier ») que ni les données ni le forum n'établissent ; un
+numéro ne prétend rien de plus que ce qu'il est.
+
+### 16.5 Ce que ça ne débloque pas
+
+**Rien**, et c'est une décision, pas une timidité. Quatre raisons qui vont dans
+le même sens :
+
+1. Les points sont *ce que l'indexeur a vu*. Une nuit où il est tombé n'a jamais
+   eu lieu. Mettre un droit d'écriture derrière un nombre indémontrable, ce
+   serait refuser un message pour une raison qu'on ne peut pas opposer au lecteur.
+2. Ça mettrait l'indexeur **sur le chemin critique de l'écriture**. Aujourd'hui
+   s'il tombe, le classement se recalcule localement et le forum marche ; demain
+   il faudrait que la policy connaisse le niveau — donc qu'elle devienne à état,
+   et l'invariant « une seule implémentation, sans état » tombe.
+3. Ça verrouille le nouveau venu dehors, alors que le coût d'identité à l'entrée
+   est identifié comme le premier frein produit (§3.1).
+4. Filtrer est déjà le travail de la PoW, de la policy et du web of trust (§12).
+   Le rôle des points est de **rendre la contribution visible**, qui est une
+   fonction culturelle (§15.3). Les mélanger abîmerait les deux.
+
+Corollaire : les points ne descendent jamais. Un nombre qui baisse rend le forum
+anxiogène et l'archive instable ; une clé bannie cesse simplement de gagner,
+puisque le relais refuse ses events avant stockage (§9.5).
+
+### 16.6 À l'écran : le niveau est un mot, les points sont une métrique
+
+- **bande d'auteur du fil** : le niveau seul, en mono, dans le groupe de
+  provenance (pseudo, discriminant, heure, nº de post) — et **pas** en pastille.
+  Le niveau est un *fait sur l'identité*, pas un statut accordé par le forum ;
+  une pastille lui donnerait le poids visuel du marqueur de modérateur. Rien en
+  dessous du niveau 2 : une marque dont la seule information est « cette personne
+  n'a rien fait » désigne le nouveau venu, ce qui est le contraire du but.
+- **page de profil** : le nombre en entier, la progression, les faits qui
+  l'expliquent. C'est la page où l'on vient jauger un inconnu, donc la seule où
+  le chiffre informe.
+- **`/classement`** : un registre, pas un podium — ni or, ni argent, ni bronze.
+  La charte réserve sa seule couleur chaude à ce qui arrive *maintenant* ; trois
+  médailles y mettraient un second accent chaud pour dire quelque chose de bien
+  plus tiède. Le seul aplat coloré de la page est **ta** place. Le barème y est
+  affiché, et lu depuis le code qui compte : une page qui recopierait les valeurs
+  finirait par annoncer un barème que le forum n'applique plus.
+- **pas dans la liste des topics** : c'est une liste de triage, le niveau du
+  dernier posteur n'aide aucune décision.
+
+Sans clé d'indexeur épinglée, **il n'y a pas de points du tout** : le store rend
+`null` et l'interface n'affiche rien (invariant 4). Un « niveau 1 » affiché faute
+de source serait un mensonge tranquille.
+
+### 16.7 Les limites, à dire plutôt qu'à cacher
+
+- **L'indexeur devient à état.** C'était le seul programme entièrement en
+  mémoire, et il redémarrait vide sans que personne puisse s'en apercevoir — un
+  classement par vélocité ne parle que du présent. Un score cumulatif, non. D'où
+  un fichier hors du dépôt (`POINTS_STATE`, `~/forome-data` en production, sinon
+  un déploiement le remettrait à zéro), écrit atomiquement, et dont l'illisibilité
+  ne bloque pas le démarrage : le tick est l'écran principal, il n'a pas à tomber
+  avec une fonctionnalité de confort.
+- **Le pli n'est pas commutatif** : le seuil de crédit se lit sur le total
+  courant de celui qui crédite. Un rejeu doit donc se faire par `created_at`
+  croissant, sinon deux reconstructions donnent deux scores. C'est pourquoi la
+  reconstruction complète n'est pas automatisée, et pourquoi le rattrapage au
+  démarrage trie avant d'ingérer.
+- **Le trou d'arrêt n'est comblé qu'en partie.** Le rattrapage repart de la
+  dernière date comptée, mais il est borné (`CATCHUP_LIMIT`) et il le dit dans le
+  journal quand il tape son plafond.
+- **~5 000 membres classés**, plafond de fait : la policy borne un event à 32 Ko,
+  d'où seize morceaux répartis par premier caractère de clé. Au-delà il faudra
+  couper plus fin (deux caractères, 256 morceaux) — le format le permet, mais il
+  faudra trancher qui reste au classement.

@@ -132,6 +132,50 @@
                 </div>
               </dl>
 
+              <!-- Le niveau a sa place ici et nulle part ailleurs en entier : la
+                   bande d'auteur du fil n'en montre que le palier (§16), parce
+                   qu'un chiffre répété sur quarante rangées ferait du fil un
+                   tableau de bord. C'est la page où l'on vient jauger quelqu'un,
+                   donc la seule où le nombre informe. -->
+              <section v-if="points.available" class="profil__level" :class="{ 'profil__level--self': isSelf }">
+                <div class="profil__level-head">
+                  <p class="profil__level-n mono">
+                    <Explain term="niveau" :body="levelBody">niveau {{ prog.level }}</Explain>
+                  </p>
+                  <p class="profil__level-pts mono">{{ prog.points.toLocaleString('fr-FR') }} points</p>
+                </div>
+
+                <!-- Barre de progression : la même idée que le rail de chauffe de
+                     la colonne — une quantité continue lue en périphérie plutôt
+                     que déchiffrée. En encre et non en orange : l'orange dit ce
+                     qui arrive maintenant, un score ne dit que du passé. -->
+                <div
+                  class="profil__level-bar"
+                  role="progressbar"
+                  :aria-valuenow="prog.into"
+                  :aria-valuemin="0"
+                  :aria-valuemax="prog.span"
+                  :aria-label="`progression vers le niveau ${prog.level + 1}`"
+                >
+                  <span class="profil__level-fill" :style="{ width: `${levelPct}%` }" />
+                </div>
+
+                <p class="profil__level-next">
+                  encore {{ prog.toNext.toLocaleString('fr-FR') }} point{{ prog.toNext > 1 ? 's' : '' }}
+                  avant le niveau {{ prog.level + 1 }}
+                </p>
+
+                <p v-if="pointsEntry" class="profil__level-facts mono">
+                  {{ pointsEntry.topics }} topic{{ pointsEntry.topics > 1 ? 's' : '' }}
+                  · {{ pointsEntry.replies }} réponse{{ pointsEntry.replies > 1 ? 's' : '' }}
+                  · {{ pointsEntry.activeDays }} jour{{ pointsEntry.activeDays > 1 ? 's' : '' }}
+                  actif{{ pointsEntry.activeDays > 1 ? 's' : '' }}
+                  <template v-if="rank">
+                    · <NuxtLink to="/classement" class="profil__level-rank">{{ rank }}ᵉ au classement</NuxtLink>
+                  </template>
+                </p>
+              </section>
+
               <p v-if="state === 'error'" class="profil__facts-err">
                 Aucun relais n'a répondu : ce profil peut être incomplet.
               </p>
@@ -267,6 +311,7 @@
  */
 import { ref, computed, watch } from 'vue'
 import { decode } from 'nostr-tools/nip19'
+import { minDaysForLevel } from '@forome/points'
 import type { Filter } from 'nostr-tools/filter'
 import { KIND_COMMENT, KIND_CONTACTS, KIND_THREAD, type NostrEvent, type Profile } from '~/types/nostr'
 import { npubFor, rootIdOf, topicTitle } from '~/utils/nostr'
@@ -278,6 +323,7 @@ const profiles = useProfileStore()
 const social = useSocialStore()
 const identity = useIdentityStore()
 const dms = useDmStore()
+const points = useUserPointsStore()
 const relays = useRelayStore()
 
 /** Accepte une `npub` comme une clé hex — les gens copient l'un ou l'autre. */
@@ -458,6 +504,28 @@ const firstSeenLabel = computed(() =>
 )
 
 const hasFacts = computed(() => Boolean(firstSeenLabel.value || followCount.value || updatedAt.value))
+
+/* ------------------------------------------------------------------ niveau */
+
+const prog = computed(() => points.progressOf(pubkey.value ?? ''))
+const pointsEntry = computed(() => (pubkey.value ? points.entryOf(pubkey.value) : null))
+const rank = computed(() => (pubkey.value ? points.rankOf(pubkey.value) : null))
+
+/**
+ * Le niveau 1 occupe toute sa largeur : sa borne basse et sa borne haute sont
+ * 0 et 25, donc `span` ne vaut jamais 0 — mais une division par zéro sur une
+ * barre est le genre de `NaN` qui casse une mise en page sans message d'erreur.
+ */
+const levelPct = computed(() => {
+  const p = prog.value
+  return p.span > 0 ? Math.round((p.into / p.span) * 100) : 0
+})
+
+const levelBody = computed(() => [
+  'Les points viennent surtout de ce que ses messages provoquent : qui lui répond, qui vient dans ses topics. Écrire beaucoup rapporte peu.',
+  `Le total gagnable par jour est plafonné, donc un niveau se paie en temps réel : le niveau ${prog.value.level} demande au moins ${minDaysForLevel(prog.value.level)} jours d'activité, quoi qu'on fasse.`,
+  "C'est l'indexeur du forum qui compte, sur ce qu'il a vu passer. Aucun droit ne dépend de ce nombre — ni écrire, ni voter, ni rien.",
+])
 
 /** La bande donne l'écart (« il y a 15 h ») ; l'horodatage exact reste ici. */
 const updatedBody = computed(() =>
@@ -768,6 +836,85 @@ usePageTitle(() => (pubkey.value ? profiles.displayName(pubkey.value) : 'Profil'
   line-height: 1.25;
   color: var(--ink);
   font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------------------------------------------ niveau
+ * Un bloc à part, sur fond creusé : les faits du dessus sont trois valeurs
+ * indépendantes, le niveau est UNE mesure avec sa progression. Les aligner dans
+ * la même grille aurait fait passer un score pour une date.
+ */
+.profil__level {
+  margin: 13px 0 0;
+  padding: 11px 13px 12px;
+  background: var(--surface-sunken);
+  border-radius: var(--r-control);
+}
+.profil__level-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+/* En mono et non dans la fonte de titre : le niveau est un fait de provenance,
+   du même registre que l'heure et le nº de post — et le nom déclaré est déjà
+   l'élément de titre de cette carte. */
+.profil__level-n {
+  margin: 0;
+  font-size: var(--fs-title);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  color: var(--ink);
+}
+.profil__level-pts {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Bornée, comme celle du classement : sur toute la largeur de la carte, un
+   remplissage de 8 % se lit comme un filet abîmé et non comme une jauge. */
+.profil__level-bar {
+  position: relative;
+  height: 3px;
+  max-width: 280px;
+  margin: 9px 0 0;
+  border-radius: 999px;
+  background: var(--line);
+  overflow: hidden;
+}
+.profil__level-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--ink-4);
+  transition: width 0.4s ease;
+}
+/* Le bleu dit « où tu es » (voir l'en-tête de la charte) : sur son propre
+   profil, la barre est la seule chose de la page qui parle du lecteur. */
+.profil__level--self .profil__level-fill {
+  background: var(--link);
+}
+@media (prefers-reduced-motion: reduce) {
+  .profil__level-fill {
+    transition: none;
+  }
+}
+
+.profil__level-next {
+  margin: 7px 0 0;
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+}
+.profil__level-facts {
+  margin: 3px 0 0;
+  font-size: var(--fs-xs);
+  color: var(--ink-4);
+  font-variant-numeric: tabular-nums;
+}
+.profil__level-rank {
+  color: var(--ink-3);
 }
 
 .profil__facts-err {

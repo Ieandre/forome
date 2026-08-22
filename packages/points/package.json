@@ -1,5 +1,5 @@
 {
-  "name": "@forome/relay-policy",
+  "name": "@forome/points",
   "version": "0.1.0",
   "private": true,
   "license": "AGPL-3.0-only",
@@ -7,18 +7,12 @@
   "main": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./strfry": "./src/strfry-plugin.ts",
-    "./moderation": "./src/moderation.ts",
-    "./revisions": "./src/revisions.ts",
-    "./thread": "./src/thread.ts",
-    "./polls": "./src/polls.ts"
+    "./ledger": "./src/ledger.ts",
+    "./payload": "./src/payload.ts"
   },
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
-  },
-  "dependencies": {
-    "nostr-tools": "^2.10.4"
   },
   "devDependencies": {
     "typescript": "^5.7.3",

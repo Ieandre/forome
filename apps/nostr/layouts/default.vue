@@ -64,6 +64,7 @@ const social = useSocialStore()
 const dms = useDmStore()
 const notifs = useNotificationStore()
 const mod = useModerationStore()
+const points = useUserPointsStore()
 const route = useRoute()
 
 /**
@@ -88,6 +89,9 @@ onMounted(() => {
   // et un message masqué doit l'être dès le premier écran — y compris pour un
   // visiteur qui n'a pas encore de clé.
   mod.start()
+  // Les points non plus ne sont pas un canal personnel : le niveau s'affiche
+  // dans la bande d'auteur de tout le monde, y compris pour un visiteur sans clé.
+  points.start()
   if (identity.pubkey) startPersonal()
 })
 

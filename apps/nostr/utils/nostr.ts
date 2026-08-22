@@ -3,41 +3,23 @@
  */
 import { neventEncode, npubEncode, decode } from 'nostr-tools/nip19'
 import { getPublicKey } from 'nostr-tools/pure'
+import { rootIdOf as sharedRootIdOf, tagValue } from '@forome/relay-policy/thread'
 import type { NostrEvent, TopicRow } from '~/types/nostr'
 import { KIND_THREAD } from '~/types/nostr'
 
 /* ------------------------------------------------------------------ tags */
 
-export function tagValue(ev: NostrEvent, name: string): string | null {
-  for (const t of ev.tags) if (t[0] === name && t[1]) return t[1]
-  return null
-}
-
 /**
- * Racine du fil auquel appartient cet event (spec §2.3).
- * NIP-22 met la racine en tag MAJUSCULE `E` et le parent immédiat en `e`.
- * On tolère aussi le vieux style NIP-10 (`e` marqué "root") pour ne pas
- * ignorer les events des clients qui ne sont pas encore passés à NIP-22.
+ * Forme du fil : réexportée du code partagé avec le relais et l'indexeur, pas
+ * réécrite ici. `parentIdOf` décide à qui va un crédit de points (§16) autant
+ * qu'il décide sous quel message s'affiche une réponse — deux implémentations
+ * qui divergeraient créditeraient deux personnes différentes pour le même geste.
  */
-export function rootIdOf(ev: NostrEvent): string | null {
-  if (ev.kind === KIND_THREAD) return ev.id
-  const upper = tagValue(ev, 'E')
-  if (upper) return upper
-  for (const t of ev.tags) if (t[0] === 'e' && t[3] === 'root' && t[1]) return t[1]
-  for (const t of ev.tags) if (t[0] === 'e' && t[1]) return t[1]
-  return null
-}
+export { tagValue, parentIdOf } from '@forome/relay-policy/thread'
 
-/** Parent immédiat cité (tag `e` minuscule). Null si la réponse vise la racine. */
-export function parentIdOf(ev: NostrEvent): string | null {
-  const root = tagValue(ev, 'E')
-  for (const t of ev.tags) {
-    if (t[0] !== 'e' || !t[1]) continue
-    if (t[3] === 'root') continue
-    if (root && t[1] === root) continue
-    return t[1]
-  }
-  return null
+/** Racine du fil, avec notre kind de topic (spec §2.3). */
+export function rootIdOf(ev: NostrEvent): string | null {
+  return sharedRootIdOf(ev, KIND_THREAD)
 }
 
 /** Titre d'un topic : tag `title`, sinon première ligne du contenu. */

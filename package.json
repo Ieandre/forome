@@ -10,7 +10,7 @@
   ],
   "scripts": {
     "build": "npm run build -w @forome/nostr-client",
-    "test": "npm run test -w @forome/relay-policy && npm run test -w @forome/indexer && npm run test -w @forome/nostr-client",
+    "test": "npm run test -w @forome/relay-policy && npm run test -w @forome/points && npm run test -w @forome/indexer && npm run test -w @forome/nostr-client",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "setup:moderation": "npx tsx scripts/setup-moderation.ts",
     "dev:nostr": "npm run dev -w @forome/nostr-client",

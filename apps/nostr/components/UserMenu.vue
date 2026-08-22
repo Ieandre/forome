@@ -28,6 +28,13 @@
           · clé {{ identity.keySaved ? 'sauvegardée' : 'non sauvegardée' }}
         </template>
       </p>
+      <!-- Son propre niveau se voit ici et pas seulement sur son profil : la
+           progression n'intéresse que soi, et c'est en regardant son identité
+           qu'on se demande où on en est. Le chiffre est là, contrairement à la
+           bande d'auteur du fil (§16). -->
+      <p v-if="myLevel !== null" class="um__mono">
+        niveau {{ myLevel }} · {{ myPoints.toLocaleString('fr-FR') }} point{{ myPoints > 1 ? 's' : '' }}
+      </p>
 
       <hr class="um__sep" />
 
@@ -54,6 +61,10 @@
 
       <NuxtLink to="/appareils" class="um__item" @click="open = false">
         Mes appareils
+      </NuxtLink>
+
+      <NuxtLink to="/classement" class="um__item" @click="open = false">
+        Classement
       </NuxtLink>
 
       <!-- La doc vit ici et non dans la nav du haut : celle-ci porte deux lieux
@@ -125,11 +136,15 @@ const identity = useIdentityStore()
 const profiles = useProfileStore()
 const mod = useModerationStore()
 const theme = useTheme()
+const points = useUserPointsStore()
 
 const open = ref(false)
 const confirming = ref(false)
 
 const npub = computed(() => (identity.pubkey ? npubFor(identity.pubkey) : ''))
+
+const myLevel = computed(() => (identity.pubkey ? points.levelOf(identity.pubkey) : null))
+const myPoints = computed(() => (identity.pubkey ? points.pointsOf(identity.pubkey) : 0))
 
 const displayName = computed(() =>
   identity.pubkey ? profiles.displayName(identity.pubkey) : '…',

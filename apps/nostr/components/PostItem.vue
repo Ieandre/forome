@@ -59,6 +59,12 @@
         <span class="msg__disc mono">·{{ profiles.discriminator(post.pubkey) }}</span>
       </Explain>
 
+      <!-- Le niveau se range avec la provenance, pas avec les pastilles — voir
+           `LevelMark.vue`. Absent en compact, comme l'heure : la rangée compacte
+           est une ligne d'aperçu. Absent en anonyme : une clé par topic ne
+           capitalise pas (§3.7). -->
+      <LevelMark v-if="!post.anon && !compact" :pubkey="post.pubkey" />
+
       <!-- NIP-05 réellement vérifié (§3.5). « Injoignable » n'est pas
            « invalide » : un domaine muet ne prouve rien, et on le dit. -->
       <Explain v-if="nip05 && !post.anon" term="nip-05" variant="chip" :body="nip05Body">

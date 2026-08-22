@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@forome/points": "*",
     "@forome/relay-policy": "*",
     "nostr-tools": "^2.10.4",
     "ws": "^8.18.0"

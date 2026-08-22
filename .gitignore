@@ -8,6 +8,10 @@ dist/
 .idea/
 coverage/
 data/media/
+# Score des membres en dev : un cache reconstructible depuis les relais, jamais
+# une source (apps/indexer/src/points.ts). En production il vit dans
+# ~/forome-data, hors du dépôt, pour survivre au `git reset --hard` du déploiement.
+data/points.json*
 .playwright-mcp/
 # Carnet du miroir de stickers : un cache reconstructible, pas une source.
 # Le perdre ne coûte qu'un dépôt redondant (voir server/utils/stickerMirror.ts).

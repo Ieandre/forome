@@ -30,9 +30,11 @@ import type { Event } from 'nostr-tools/core'
 import { useWebSocketImplementation } from 'nostr-tools/pool'
 import WebSocket from 'ws'
 import { isRevision } from '@forome/relay-policy/revisions'
-import { communityFilter } from '@forome/relay-policy'
+import { parentIdOf, rootIdOf as threadRootIdOf, tagValue } from '@forome/relay-policy/thread'
+import { KIND_POLL_VOTE, communityFilter } from '@forome/relay-policy'
 import { HotList } from './hotlist.js'
 import { RaidDetector } from './raid.js'
+import { PointsStore } from './points.js'
 
 useWebSocketImplementation(WebSocket)
 
@@ -43,6 +45,15 @@ const KIND_COMMENT = 1111
 const KIND_APP_DATA = 30078
 const TICK_D_TAG = 'forome.tick'
 
+/**
+ * « Ton topic a rassemblé du monde » : trois participants distincts dans la
+ * fenêtre de vélocité (§5.3). Le critère est le nombre de personnes et non le
+ * rang, parce qu'un rang dépend de ce que les autres font ce jour-là — sur un
+ * forum calme, les dix premiers du classement sont *tous* les topics, et le
+ * bonus deviendrait automatique.
+ */
+const HOT_MIN_PEOPLE = 3
+
 const RELAYS = (process.env.RELAYS ?? 'wss://relay.damus.io,wss://nos.lol,wss://relay.nostr.band')
   .split(',')
   .map((s) => s.trim())
@@ -50,6 +61,15 @@ const RELAYS = (process.env.RELAYS ?? 'wss://relay.damus.io,wss://nos.lol,wss://
 const TICK_INTERVAL_MS = Number(process.env.TICK_INTERVAL_MS ?? 2000)
 const PUBLISH = process.env.PUBLISH !== '0'
 const HISTORY_LIMIT = Number(process.env.HISTORY_LIMIT ?? 400)
+/** Cadence de publication des points : lente, un score ne bouge pas à la seconde. */
+const POINTS_INTERVAL_MS = Number(process.env.POINTS_INTERVAL_MS ?? 60_000)
+/**
+ * Où vit le score. Hors du dépôt en production (`~/forome-data`) : un
+ * déploiement fait `git reset --hard`, et il ne doit pas remettre le forum à zéro.
+ */
+const POINTS_STATE = process.env.POINTS_STATE ?? 'data/points.json'
+/** Events redemandés au démarrage pour combler l'arrêt (0 pour ne rien rattraper). */
+const CATCHUP_LIMIT = Number(process.env.CATCHUP_LIMIT ?? 2000)
 
 /* ------------------------------------------------------------------ identité */
 
@@ -77,6 +97,7 @@ const pk = getPublicKey(sk)
 
 const hot = new HotList()
 const raid = new RaidDetector()
+const points = PointsStore.load(POINTS_STATE)
 const pool = new SimplePool()
 
 /** Réponses vues avant leur racine — rejouées quand la racine arrive. */
@@ -89,19 +110,15 @@ function nowS(): number {
   return Math.floor(Date.now() / 1000)
 }
 
-function tagValue(ev: Event, name: string): string | null {
-  for (const t of ev.tags) if (t[0] === name && t[1]) return t[1]
-  return null
-}
-
-/** Racine du fil : `E` (NIP-22), sinon `e` marqué root, sinon premier `e`. */
+/**
+ * Racine du fil : `E` (NIP-22), sinon `e` marqué root, sinon premier `e`.
+ *
+ * La règle vient du code partagé et n'est plus réécrite ici : elle décide sous
+ * quel topic un message se range **et** à qui va un crédit de points (§16). Le
+ * client lit exactement la même.
+ */
 function rootIdOf(ev: Event): string | null {
-  if (ev.kind === KIND_THREAD) return ev.id
-  const upper = tagValue(ev, 'E')
-  if (upper) return upper
-  for (const t of ev.tags) if (t[0] === 'e' && t[3] === 'root' && t[1]) return t[1]
-  for (const t of ev.tags) if (t[0] === 'e' && t[1]) return t[1]
-  return null
+  return threadRootIdOf(ev, KIND_THREAD)
 }
 
 function topicTitle(ev: Event): string {
@@ -125,6 +142,8 @@ function stampOf(ev: Event): number {
 
 function onThread(ev: Event): void {
   eventsSeen++
+  points.ledger.onTopic({ eventId: ev.id, pubkey: ev.pubkey, createdAt: stampOf(ev) })
+  points.noteProcessed(ev.created_at)
   hot.addTopic({
     id: ev.id,
     title: topicTitle(ev),
@@ -158,6 +177,19 @@ function onComment(ev: Event): void {
   if (!rootId) return
   const payload = { eventId: ev.id, pubkey: ev.pubkey, createdAt: stampOf(ev), text: ev.content }
 
+  // Les points se comptent AVANT l'aiguillage par orphelin : un message compte
+  // pour son auteur même si la racine n'est pas encore arrivée. Ce qui dépend de
+  // la racine (créditer l'auteur du topic) est traité par le pli lui-même, qui
+  // ne crédite personne s'il ne connaît pas l'auteur visé.
+  points.ledger.onReply({
+    eventId: ev.id,
+    pubkey: ev.pubkey,
+    createdAt: payload.createdAt,
+    rootId,
+    parentId: parentIdOf(ev) ?? undefined,
+  })
+  points.noteProcessed(ev.created_at)
+
   if (!hot.has(rootId)) {
     // Les topics les plus actifs sont souvent plus anciens que la fenêtre de
     // souscription : on garde la réponse de côté plutôt que de la perdre.
@@ -178,6 +210,20 @@ function onComment(ev: Event): void {
         `arrivées corrélées ${signal.details.correlatedArrivals})`,
     )
   }
+}
+
+/**
+ * Un vote de sondage (kind 1018) : il ne compte que pour les points, jamais pour
+ * le tick. Un vote n'est pas un message — le faire remonter le topic
+ * transformerait un sondage en machine à squatter la tête de la liste, et
+ * gonflerait son compteur de réponses avec des events que personne ne lit.
+ */
+function onPollVote(ev: Event): void {
+  eventsSeen++
+  const topicId = tagValue(ev, 'e')
+  if (!topicId) return
+  points.ledger.onPollVote({ eventId: ev.id, pubkey: ev.pubkey, createdAt: stampOf(ev), topicId })
+  points.noteProcessed(ev.created_at)
 }
 
 /**
@@ -213,6 +259,13 @@ async function resolveOrphans(): Promise<void> {
 async function publishTick(): Promise<void> {
   const snapshot = hot.snapshot(nowS())
   const flagged = raid.flaggedTopics()
+
+  // Le tick est le seul endroit qui sait ce qu'un topic a rassemblé : c'est donc
+  // ici que le bonus « ton topic a réuni du monde » est constaté (une fois par
+  // topic, le pli s'en charge).
+  for (const t of snapshot.topics) {
+    if (t.ppl >= HOT_MIN_PEOPLE) points.ledger.onHotTopic(t.id, snapshot.at)
+  }
   const payload = JSON.stringify({ ...snapshot, flagged })
 
   // Ne republier que si le classement a changé : un tick identique republié
@@ -256,6 +309,60 @@ async function publishTick(): Promise<void> {
   }
 }
 
+/* ------------------------------------------------------------------- points */
+
+let pointsPublished = 0
+
+async function publishPoints(): Promise<void> {
+  points.save(POINTS_STATE)
+  if (!PUBLISH) return
+  const res = await points.publish(pool, RELAYS, sk, nowS())
+  if (res.shards === 0) return
+  pointsPublished++
+  console.log(
+    `points #${pointsPublished} · ${res.shards} morceau(x) publié(s) · ${res.keys} clés classées` +
+      (res.dropped > 0 ? ` · ⚠ ${res.dropped} hors budget d'octets` : '') +
+      (res.refused > 0 ? ` · ${res.refused} refusé(s), retenté au prochain tour` : ''),
+  )
+}
+
+/**
+ * Rattrapage au démarrage : recompter ce qui a été publié pendant que
+ * l'indexeur était arrêté.
+ *
+ * Les souscriptions ordinaires demandent « les N derniers », ce qui suffit à un
+ * classement par vélocité mais laisse un trou dans un score cumulatif. Ici on
+ * repart de la borne enregistrée.
+ *
+ * ⚠️ **Tri croissant obligatoire.** Le pli des points n'est pas commutatif : le
+ * seuil qui autorise à créditer se lit sur le total courant de celui qui
+ * crédite. Rejouer dans l'ordre d'arrivée des relais donnerait un score
+ * différent à chaque redémarrage, pour les mêmes events.
+ */
+async function catchUp(): Promise<void> {
+  const since = points.resumeFrom
+  if (since <= 0 || CATCHUP_LIMIT <= 0) return
+  try {
+    const found = await pool.querySync(
+      RELAYS,
+      { kinds: [KIND_THREAD, KIND_COMMENT, KIND_POLL_VOTE], ...communityFilter(), since, limit: CATCHUP_LIMIT },
+      { maxWait: 15_000 },
+    )
+    found.sort((a, b) => a.created_at - b.created_at)
+    for (const ev of found) {
+      if (ev.kind === KIND_THREAD) onThread(ev)
+      else if (ev.kind === KIND_COMMENT) onComment(ev)
+      else if (ev.kind === KIND_POLL_VOTE) onPollVote(ev)
+    }
+    console.log(
+      `rattrapage : ${found.length} events depuis ${new Date(since * 1000).toISOString()}` +
+        (found.length >= CATCHUP_LIMIT ? ` · ⚠ plafond atteint, l'arrêt a peut-être été plus long` : ''),
+    )
+  } catch (err) {
+    console.warn(`⚠ rattrapage impossible (${String(err)}) — les points de l'arrêt sont perdus.`)
+  }
+}
+
 /* --------------------------------------------------------------------- boot */
 
 async function main(): Promise<void> {
@@ -264,6 +371,7 @@ async function main(): Promise<void> {
   console.log(`  (hex : ${pk})`)
   console.log(`  relais : ${RELAYS.join(', ')}`)
   console.log(`  tick : kind ${KIND_APP_DATA}, d="${TICK_D_TAG}", toutes les ${TICK_INTERVAL_MS} ms`)
+  console.log(`  points : d="forome.points.<0-f>", toutes les ${POINTS_INTERVAL_MS} ms, état dans ${POINTS_STATE}`)
   console.log(`  publication : ${PUBLISH ? 'active' : 'désactivée (PUBLISH=0)'}\n`)
 
   // Même périmètre que le client, et ce n'est pas cosmétique : l'indexeur classe
@@ -279,6 +387,13 @@ async function main(): Promise<void> {
     { kinds: [KIND_COMMENT], ...communityFilter(), limit: HISTORY_LIMIT },
     { onevent: onComment, label: 'comments' },
   )
+  // Votes de sondage : uniquement pour les points (§16). Ils n'entrent pas dans
+  // le tick — voir `onPollVote`.
+  pool.subscribe(
+    RELAYS,
+    { kinds: [KIND_POLL_VOTE], ...communityFilter(), limit: HISTORY_LIMIT },
+    { onevent: onPollVote, label: 'votes' },
+  )
   // Graphe de follows : alimente la détection de raid (§12.3), rien d'autre.
   pool.subscribe(
     RELAYS,
@@ -286,11 +401,17 @@ async function main(): Promise<void> {
     { onevent: onContacts, label: 'contacts' },
   )
 
+  await catchUp()
+
   setInterval(() => void publishTick(), TICK_INTERVAL_MS)
   setInterval(() => void resolveOrphans(), 5000)
+  setInterval(() => void publishPoints(), POINTS_INTERVAL_MS)
 
   const shutdown = (): void => {
     console.log('\narrêt.')
+    // Le score avant tout : ce qui n'est pas sur le disque n'a jamais eu lieu,
+    // et un arrêt propre est le seul moment où on peut encore l'écrire.
+    points.save(POINTS_STATE)
     pool.destroy()
     process.exit(0)
   }

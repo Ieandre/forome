@@ -64,8 +64,16 @@ function probeTemplate(): UnsignedEvent {
 /**
  * Mesure le débit de hachage. Le nombre d'essais suit une loi géométrique, donc
  * un échantillon unique est très bruité → médiane de plusieurs tours.
+ *
+ * ⚠️ La sonde coûte 2^d hachages par tour, et **le worker est unique** : tout ce
+ * qu'elle prend, un minage qui arrive pendant ce temps l'attend. À 16 bits elle
+ * occupait ~350 ms sur un portable, donc 1 à 3 s sur un téléphone — juste après
+ * le chargement, c'est-à-dire pile quand on écrit sa première réponse, et le
+ * travail spéculatif partait derrière la file. À 14 bits — la difficulté
+ * plancher, donc le coût d'un post réel — la mesure reste bonne (la médiane de
+ * trois tours porte le bruit) pour cinq fois moins de calcul.
  */
-function calibrate(probeDifficulty = 16, rounds = 3): number {
+function calibrate(probeDifficulty = 14, rounds = 3): number {
   const rates: number[] = []
   for (let i = 0; i < rounds; i++) {
     const t0 = performance.now()

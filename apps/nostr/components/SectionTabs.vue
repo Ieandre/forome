@@ -3,8 +3,15 @@
     <button type="button" class="tabs__tab" :class="{ 'tabs__tab--on': !onDm }" @click="goTopics">
       Topics
     </button>
-    <NuxtLink to="/dm" class="tabs__tab" :class="{ 'tabs__tab--on': onDm }">
-      MP<span v-if="dms.unreadCount" class="tabs__badge mono">{{ dms.unreadCount }}</span>
+    <NuxtLink to="/dm" class="tabs__tab" :class="{ 'tabs__tab--on': onDm }" :aria-label="dmLabel">
+      <span aria-hidden="true">MP</span>
+      <span v-if="dms.unreadCount" class="tabs__badge mono" aria-hidden="true">{{ dms.unreadCount }}</span>
+      <!-- Les inconnus se signalent, ils ne se comptent pas : un point creux, et
+           pas un nombre en aplat orange. Voir `requestsUnread` dans le store —
+           promettre « il y a quelque chose » est tout ce qu'on doit à du
+           non-sollicité, et le compte de la boîte ne doit pas s'en trouver
+           gonflé. -->
+      <span v-if="dms.requestsUnread" class="tabs__dot" aria-hidden="true" />
     </NuxtLink>
   </nav>
 </template>
@@ -31,6 +38,20 @@ const route = useRoute()
 const router = useRouter()
 
 const onDm = computed(() => route.path === '/dm')
+
+/**
+ * Le nom accessible porte ce que les deux marques disent séparément : « MP » nu
+ * suivi d'un « 3 » se lit « MP 3 », qui ne dit pas de quoi, et le point creux ne
+ * se lit pas du tout.
+ */
+const dmLabel = computed(() => {
+  const parts: string[] = []
+  const n = dms.unreadCount
+  if (n > 0) parts.push(`${n} message${n > 1 ? 's' : ''} non lu${n > 1 ? 's' : ''}`)
+  const r = dms.requestsUnread
+  if (r > 0) parts.push(`${r} fil${r > 1 ? 's' : ''} d'inconnus en attente`)
+  return parts.length > 0 ? `MP — ${parts.join(', ')}` : 'MP'
+})
 
 /**
  * `?relays=` et `?indexer=` sont reportés — les perdre a déjà coûté un bug (voir
@@ -96,5 +117,19 @@ function goTopics(): void {
 .tabs__tab--on .tabs__badge {
   background: rgba(255, 255, 255, 0.92);
   color: var(--link);
+}
+
+/* Creux et à l'encre pâle : il doit se voir en balayant l'écran sans jamais
+   attirer le regard comme la pastille pleine. La hiérarchie des deux marques EST
+   la différence entre la boîte et la file séparée. */
+.tabs__dot {
+  width: 6px;
+  height: 6px;
+  border: 1.5px solid var(--ink-4);
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.tabs__tab--on .tabs__dot {
+  border-color: rgba(255, 255, 255, 0.75);
 }
 </style>

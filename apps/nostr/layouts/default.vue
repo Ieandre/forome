@@ -9,6 +9,12 @@
         <slot />
       </main>
     </div>
+
+    <!-- ⚠️ Ici et pas dans la colonne : sous 820 px, `.app__col` passe en
+         `display: none` dès qu'un panneau est ouvert, et TOUTES les pastilles
+         partent avec elle. Montée au niveau du layout, la bulle est le seul
+         canal qui survit — c'est ce qui la justifie. -->
+    <DmToast />
   </div>
 </template>
 
@@ -40,6 +46,16 @@
  * par le forum, et arriver directement sur `/dm` laissait l'app muette. Le web
  * of trust doit en plus être chargé tôt — `dms.inbox` s'en sert pour trier la
  * boîte principale de la file séparée (§10.2).
+ *
+ * ## Ce qui attend se dit sur trois canaux, un par situation du lecteur
+ *
+ *   - **onglet en arrière-plan** → le compte en tête du titre (`usePageTitle`) ;
+ *   - **écran occupé par autre chose** → `DmToast`, monté ici ;
+ *   - **colonne visible** → les pastilles de `SectionTabs` et `NotifBell`, les
+ *     seules qui persistent, donc les seules qui font foi.
+ *
+ * Un seul nombre circule entre eux (`notifs.unreadCount`) : deux comptes
+ * différents pour la même chose à 200 px d'écart et on n'en croirait aucun.
  */
 import { computed, watch, onMounted } from 'vue'
 

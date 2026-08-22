@@ -228,3 +228,24 @@ export function npubFor(pubkey: string): string {
     return pubkey
   }
 }
+
+/**
+ * L'inverse tolérant : `npub1…` ou 64 caractères hex → hex minuscule, `null` si
+ * ce n'est ni l'un ni l'autre.
+ *
+ * Les deux formes sont acceptées parce que `?peer=` reçoit les deux — un lien
+ * partagé porte l'npub, un clic dans la colonne l'hex. Trois copies de cette
+ * fonction traînaient (`DmList`, `pages/dm.vue`, `DmToast`) : une divergence sur
+ * ce qui est reconnu ferait qu'un même lien ouvrirait un fil ici et rien là.
+ */
+export function pubkeyFrom(raw: string): string | null {
+  const t = raw.trim()
+  if (/^[0-9a-f]{64}$/i.test(t)) return t.toLowerCase()
+  if (!t.startsWith('npub')) return null
+  try {
+    const d = decode(t)
+    return d.type === 'npub' ? d.data : null
+  } catch {
+    return null
+  }
+}

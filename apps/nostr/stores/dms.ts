@@ -82,10 +82,26 @@ export const useDmStore = defineStore('dms', () => {
   const byId = shallowRef(new Map<string, DmMessage>())
   /** Révision de `byId`, mutée en place — voir `ingestWrap`. */
   const dmRev = ref(0)
-  const sending = ref(false)
   const lastError = ref<string | null>(null)
   const unwrapFailures = ref(0)
   const readUpTo = ref(new Map<string, number>())
+  /**
+   * Vrai dès que la synchro initiale est finie (EOSE). C'est la SEULE façon de
+   * distinguer un message qui arrive d'un message qu'on rattrape : les
+   * emballages sont antidatés jusqu'à deux jours (voir `TWO_DAYS_S`), donc
+   * `created_at` ne dit rien de leur fraîcheur.
+   *
+   * S'il n'y a pas d'EOSE, il n'y a pas d'annonce — jamais de rafale de bulles
+   * sur tout un historique. La pastille, elle, reste juste dans tous les cas.
+   */
+  const synced = ref(false)
+  /**
+   * Le dernier message arrivé EN DIRECT et digne d'une annonce à l'écran
+   * (`components/DmToast.vue`). Filtré ici et pas dans le composant : la
+   * décision « qui a le droit de faire surgir quelque chose devant le lecteur »
+   * appartient au même endroit que la file séparée (§10.2).
+   */
+  const arrival = shallowRef<DmMessage | null>(null)
 
   let subs: { close: () => void }[] = []
 
@@ -97,6 +113,11 @@ export const useDmStore = defineStore('dms', () => {
   function ingestWrap(wrap: NostrEvent): void {
     const sk = identity.secretKeyForDm()
     if (!sk) return
+    // Retenu ici et annoncé APRÈS le `catch` : à l'intérieur, une exception de
+    // `announce` serait comptée en `unwrapFailures`, c'est-à-dire attribuée à un
+    // emballage illisible. Un compteur qui ment sur ce qu'il compte ne sert plus
+    // à diagnostiquer.
+    let fresh: DmMessage | null = null
     try {
       const rumor = unwrapEvent(wrap, sk)
 
@@ -135,15 +156,68 @@ export const useDmStore = defineStore('dms', () => {
       // rendait la synchro initiale quadratique (comme `stores/topics.ts`)
       byId.value.set(msg.id, msg)
       dmRev.value++
+      fresh = msg
     } catch {
       // Emballage illisible : soit il ne nous est pas destiné, soit il est
       // corrompu. Les deux sont normaux sur un relais public — on compte, on
       // n'alerte pas.
       unwrapFailures.value++
     }
+    if (fresh) announce(fresh)
+  }
+
+  /**
+   * Ce qui a le droit de surgir devant le lecteur, et pourquoi c'est si étroit.
+   *
+   * Quatre conditions, chacune ferme une porte :
+   *   - `synced` — sinon l'historique entier défilerait en bulles à l'ouverture ;
+   *   - `!fromMe` — la copie de nos propres MP (NIP-17 en publie deux) repasse
+   *     ici, et s'annoncer à soi-même n'a pas de sens ;
+   *   - `inWot` — **la file séparée ne fait pas surgir de bulle.** Une inconnue
+   *     qui apparaît par-dessus l'écran serait exactement le harcèlement que
+   *     §10.2 refuse, et le relais ne peut pas filtrer pour nous. Les inconnus
+   *     se signalent sans interrompre, par le point de `SectionTabs` ;
+   *   - `!isMuted` — bloquer doit valoir ici aussi, sinon bloquer ne bloque rien.
+   */
+  function announce(msg: DmMessage): void {
+    if (!synced.value || msg.fromMe) return
+    if (!social.inWot(msg.peer) || social.isMuted(msg.peer)) return
+    arrival.value = msg
+  }
+
+  /** Annonce consommée : par le tap, par le renvoi, ou par l'expiration. */
+  function clearArrival(): void {
+    arrival.value = null
   }
 
   /* ------------------------------------------------------------- envoi */
+
+  /**
+   * Pose un message dans le fil sans passer par un emballage.
+   *
+   * Séparé de `ingestWrap` à dessein : ici il n'y a rien à déchiffrer ni à
+   * authentifier — la rumeur sort de notre propre clé, et son id est déjà
+   * définitif (`createRumor` le calcule). C'est ce qui rend l'écho exact :
+   * l'emballage qui reviendra du relais porte la même rumeur, donc `ingestWrap`
+   * reconnaîtra l'id et n'ajoutera pas de doublon.
+   */
+  function showLocal(rumor: { id: string; pubkey: string; created_at: number; content: string }, peer: string): void {
+    byId.value.set(rumor.id, {
+      id: rumor.id,
+      pubkey: rumor.pubkey,
+      peer,
+      fromMe: true,
+      createdAt: rumor.created_at,
+      content: rumor.content,
+      wrapPow: 0,
+    })
+    dmRev.value++
+  }
+
+  /** Retire un message affiché dont l'envoi n'a finalement abouti nulle part. */
+  function drop(id: string): void {
+    if (byId.value.delete(id)) dmRev.value++
+  }
 
   /**
    * Emballage **avec preuve de travail** (spec §10.2, §12.2).
@@ -189,11 +263,26 @@ export const useDmStore = defineStore('dms', () => {
   }
 
   /**
-   * Envoie un MP. `wrapManyEvents` produit **deux** emballages : un pour le
-   * destinataire, un pour soi — sinon l'expéditeur ne relit pas ses propres MP.
-   * NIP-17 le prescrit : deux boîtes par message, une par lecteur légitime.
+   * Envoie un MP. Deux emballages : un pour le destinataire, un pour soi —
+   * sinon l'expéditeur ne relit pas ses propres MP. NIP-17 le prescrit : deux
+   * boîtes par message, une par lecteur légitime.
+   *
+   * **Le message est à l'écran avant le minage et avant le réseau**, comme le
+   * fil public (`usePublisher.run`). C'est ce qui manquait ici : l'envoi
+   * attendait deux PoW — sérialisées, le worker de minage est unique — puis le
+   * verdict COMPLET des deux publications, soit jusqu'à `PUBLISH_MAX_WAIT_MS`
+   * imposé par le relais le plus lent alors qu'un autre avait déjà accepté. Le
+   * composeur restait figé plusieurs secondes pour un message déjà parti.
+   *
+   * `onSending` est appelé au même instant, pour vider le composeur : un champ
+   * encore plein pendant que « ça réfléchit » se lit comme un clic raté, et on
+   * reclique.
    */
-  async function send(peer: string, text: string): Promise<boolean> {
+  async function send(
+    peer: string,
+    text: string,
+    opts: { onSending?: () => void } = {},
+  ): Promise<boolean> {
     const sk = identity.secretKeyForDm()
     if (!sk) {
       lastError.value = 'MP indisponibles avec une extension NIP-07 à cette étape'
@@ -202,50 +291,59 @@ export const useDmStore = defineStore('dms', () => {
     const content = text.trim()
     if (!content || !/^[0-9a-f]{64}$/.test(peer)) return false
 
-    sending.value = true
+    const me = identity.pubkey!
     lastError.value = null
+    let posted: string | null = null
     try {
       // La rumeur (kind 14) n'est PAS signée — un message signé et déchiffré
       // serait republiable par le destinataire comme preuve publique.
-      const rumor = createRumor(
-        { kind: KIND_CHAT, content, tags: [['p', peer]] },
-        sk,
-      )
+      const rumor = createRumor({ kind: KIND_CHAT, content, tags: [['p', peer]] }, sk)
       // Le sceau (kind 13) EST signé par l'expéditeur : c'est ce qui rend un MP
       // signalé prouvablement authentique (§10.2).
-      const seal = createSeal(rumor, sk, peer)
+      const forPeer = createSeal(rumor, sk, peer)
+      const forMe = createSeal(rumor, sk, me)
 
-      // Deux emballages : un pour le destinataire, un pour soi — sinon on ne
-      // relit pas ses propres MP. NIP-17 le prescrit.
-      const me = identity.pubkey!
+      posted = rumor.id
+      showLocal(rumor, peer)
+      opts.onSending?.()
+
       const wraps = await Promise.all([
-        wrapWithPow(seal, peer, miner.difficulty.value),
-        wrapWithPow(createSeal(rumor, sk, me), me, miner.difficulty.value),
+        wrapWithPow(forPeer, peer, miner.difficulty.value),
+        wrapWithPow(forMe, me, miner.difficulty.value),
       ])
+      // La PoW n'existe qu'ici, alors que la bulle est affichée depuis le clic.
+      const shown = byId.value.get(rumor.id)
+      if (shown) {
+        shown.wrapPow = getPow(wraps[0]!.id)
+        dmRev.value++
+      }
 
-      const results = await Promise.all(wraps.map((w) => relayStore.publish(w)))
-      const accepted = results.filter((r) => r.accepted.length > 0).length
+      const parts = wraps.map((w) => relayStore.publishSplit(w))
+      const acks = await Promise.all(parts.map((p) => p.firstAck))
 
-      if (accepted === 0) {
-        const reason = results[0]?.rejected[0]?.reason ?? 'aucun relais joignable'
-        lastError.value = `refusé : ${reason}`
+      if (!acks.some(Boolean)) {
+        // `firstAck` ne rend false qu'une fois tous les relais départagés : le
+        // verdict est déjà là, `settled` ne fait plus attendre.
+        const result = await parts[0]!.settled
+        drop(rumor.id)
+        lastError.value = `refusé : ${result.rejected[0]?.reason ?? 'aucun relais joignable'}`
         return false
       }
-      if (accepted < wraps.length) {
-        // Cas réel à ne pas taire : si seule la copie du destinataire passe,
-        // le message est délivré mais absent de NOTRE historique.
-        lastError.value = `${accepted}/${wraps.length} copies acceptées — historique peut-être incomplet`
-      }
-      // Affichage immédiat : on déballe nos propres emballages plutôt que de
-      // fabriquer un message optimiste à la main, ce qui garantit que ce qui
-      // s'affiche est bien ce qui a été chiffré.
-      for (const w of wraps) ingestWrap(w)
+
+      // Verdict complet en arrière-plan. Cas réel à ne pas taire : si seule la
+      // copie du destinataire passe, le message est délivré mais absent de
+      // NOTRE historique.
+      void Promise.all(parts.map((p) => p.settled)).then((results) => {
+        const accepted = results.filter((r) => r.accepted.length > 0).length
+        if (accepted > 0 && accepted < results.length) {
+          lastError.value = `${accepted}/${results.length} copies acceptées — historique peut-être incomplet`
+        }
+      })
       return true
     } catch (err) {
+      if (posted) drop(posted)
       lastError.value = err instanceof Error ? err.message : String(err)
       return false
-    } finally {
-      sending.value = false
     }
   }
 
@@ -286,6 +384,17 @@ export const useDmStore = defineStore('dms', () => {
 
   const unreadCount = computed(() => inbox.value.reduce((n, t) => n + t.unread, 0))
 
+  /**
+   * Combien de fils INCONNUS attendent — en fils, jamais en messages.
+   *
+   * La file séparée doit se signaler (sinon elle est un trou noir : le premier
+   * message de n'importe qui y tombe, réponse d'un correspondant qu'on a écrit
+   * le premier comprise) sans jamais se compter avec la boîte. Un nombre de
+   * messages inviterait à courir ; un nombre de fils dit seulement « il y a
+   * quelque chose », et c'est tout ce qu'on veut promettre pour du non-sollicité.
+   */
+  const requestsUnread = computed(() => requests.value.filter((t) => t.unread > 0).length)
+
   function markRead(peer: string): void {
     const next = new Map(readUpTo.value)
     next.set(peer, Math.floor(Date.now() / 1000))
@@ -318,7 +427,7 @@ export const useDmStore = defineStore('dms', () => {
     subs.push(
       relayStore.subscribe(
         { kinds: [KIND_GIFT_WRAP], '#p': [me] },
-        { onevent: ingestWrap },
+        { onevent: ingestWrap, oneose: () => (synced.value = true) },
         'dm',
         { authenticate: true },
       ),
@@ -328,6 +437,9 @@ export const useDmStore = defineStore('dms', () => {
   function stop(): void {
     for (const s of subs) s.close()
     subs = []
+    // La souscription repartira sur un historique complet : sans ça, la
+    // resynchro rejouerait tout en annonces.
+    synced.value = false
   }
 
   function reset(): void {
@@ -335,17 +447,20 @@ export const useDmStore = defineStore('dms', () => {
     byId.value = new Map()
     readUpTo.value = new Map()
     unwrapFailures.value = 0
+    arrival.value = null
   }
 
   return {
     available,
-    sending,
     lastError,
     unwrapFailures,
     threads,
     inbox,
     requests,
     unreadCount,
+    requestsUnread,
+    arrival,
+    clearArrival,
     send,
     watch,
     stop,

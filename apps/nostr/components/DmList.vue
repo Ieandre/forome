@@ -108,8 +108,7 @@
  * rechargement.
  */
 import { ref, computed } from 'vue'
-import { decode } from 'nostr-tools/nip19'
-import { npubFor } from '~/utils/nostr'
+import { npubFor, pubkeyFrom } from '~/utils/nostr'
 
 const dms = useDmStore()
 const social = useSocialStore()
@@ -123,7 +122,7 @@ const peerError = ref<string | null>(null)
 
 const peer = computed(() => {
   const raw = Array.isArray(route.query.peer) ? route.query.peer[0] : route.query.peer
-  return raw ? normalizeKey(String(raw)) : null
+  return raw ? pubkeyFrom(String(raw)) : null
 })
 
 const myNpub = computed(() => (identity.pubkey ? npubFor(identity.pubkey) : ''))
@@ -137,24 +136,9 @@ function open(pk: string): void {
   void router.push({ path: '/dm', query: { ...route.query, peer: npubFor(pk) } })
 }
 
-/** Même tolérance de format que `?peer=` : npub1… ou 64 caractères hex. */
-function normalizeKey(raw: string): string | null {
-  const t = raw.trim()
-  if (/^[0-9a-f]{64}$/i.test(t)) return t.toLowerCase()
-  if (t.startsWith('npub')) {
-    try {
-      const d = decode(t)
-      if (d.type === 'npub') return d.data
-    } catch {
-      return null
-    }
-  }
-  return null
-}
-
 function openFromInput(): void {
   peerError.value = null
-  const pk = normalizeKey(peerDraft.value)
+  const pk = pubkeyFrom(peerDraft.value)
   if (!pk) {
     peerError.value = 'Format non reconnu. Attendu : npub1… ou 64 caractères hex.'
     return

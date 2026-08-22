@@ -116,8 +116,8 @@
           @input="autoGrow"
           @keydown.enter.exact.prevent="send"
         />
-        <button type="submit" class="btn btn--primary dm__send" :disabled="!draft.trim() || dms.sending">
-          {{ dms.sending ? '…' : 'Envoyer' }}
+        <button type="submit" class="btn btn--primary dm__send" :disabled="!draft.trim()">
+          Envoyer
         </button>
       </form>
       <p v-if="dms.lastError" class="dm__error">{{ dms.lastError }}</p>
@@ -144,11 +144,10 @@
  * topic reste un registre de posts numérotés. Une conversation à deux et un
  * forum public ne se lisent pas pareil.
  */
-import { ref, computed, nextTick, watch } from 'vue'
-import { decode } from 'nostr-tools/nip19'
+import { ref, computed, nextTick, watch, onBeforeUnmount } from 'vue'
 import { absoluteTime, clockTime, dayKey, dayLabel } from '~/utils/format'
 import { parseRichText, hasMarkup } from '~/utils/richtext'
-import { npubFor } from '~/utils/nostr'
+import { npubFor, pubkeyFrom } from '~/utils/nostr'
 import type { DmMessage } from '~/stores/dms'
 
 const dms = useDmStore()
@@ -168,15 +167,7 @@ const router = useRouter()
  */
 const peer = computed(() => {
   const raw = Array.isArray(route.query.peer) ? route.query.peer[0] : route.query.peer
-  if (!raw) return null
-  const t = String(raw).trim()
-  if (/^[0-9a-f]{64}$/i.test(t)) return t.toLowerCase()
-  try {
-    const d = decode(t)
-    return d.type === 'npub' ? (d.data as string) : null
-  } catch {
-    return null
-  }
+  return raw ? pubkeyFrom(String(raw)) : null
 })
 
 function closeThread(): void {
@@ -284,22 +275,62 @@ watch(
   { immediate: true },
 )
 
-/** Un message qui arrive dans le fil ouvert doit se voir sans faire défiler. */
+/**
+ * Un message qui arrive dans le fil ouvert doit se voir sans faire défiler — et
+ * cesser d'être compté comme non lu.
+ *
+ * `markRead` ne se déclenchait qu'au CHANGEMENT de `peer` : les pastilles
+ * montaient donc pendant qu'on lisait le message qui les faisait monter, et il
+ * fallait quitter le fil puis y revenir pour les éteindre. Un compteur qui
+ * grimpe sur ce qu'on a sous les yeux apprend à être ignoré.
+ *
+ * ⚠️ La condition de visibilité n'est pas cosmétique : sans elle, un onglet
+ * laissé ouvert sur une conversation absorberait tous les messages de la journée
+ * en silence, et on rentrerait le soir sur une app qui n'a rien à signaler. Lu
+ * veut dire regardé.
+ */
 watch(
   () => messages.value.length,
-  () => void nextTick(toBottom),
+  () => {
+    void nextTick(toBottom)
+    if (peer.value && document.visibilityState === 'visible') dms.markRead(peer.value)
+  },
 )
 
-/** hex ou npub → hex. Null si ce n'est ni l'un ni l'autre. */
+/**
+ * Revenir sur l'onglet acquitte ce qui est arrivé pendant l'absence : le fil est
+ * à l'écran, il n'y a rien de plus à faire pour le lire. Le pendant du garde-fou
+ * ci-dessus — sans ça, ces messages resteraient non lus jusqu'au prochain
+ * changement de fil.
+ */
+function onVisible(): void {
+  if (peer.value && document.visibilityState === 'visible') dms.markRead(peer.value)
+}
+if (import.meta.client) document.addEventListener('visibilitychange', onVisible)
+onBeforeUnmount(() => {
+  if (import.meta.client) document.removeEventListener('visibilitychange', onVisible)
+})
 
 
+/**
+ * Le composeur se vide au geste, pas au verdict : `onSending` est appelé une
+ * fois le message posé dans le fil, avant le minage et avant le réseau (voir
+ * `dms.send`).
+ *
+ * Le texte ne revient qu'à l'échec ET si rien n'a été retapé depuis. Un MP
+ * refusé au bout de trois secondes écraserait sinon le message suivant, déjà en
+ * cours de frappe — dans une conversation on enchaîne, contrairement au fil.
+ */
 async function send(): Promise<void> {
   if (!peer.value || !draft.value.trim()) return
-  const ok = await dms.send(peer.value, draft.value)
-  if (ok) {
-    draft.value = ''
-    await nextTick(toBottom)
-  }
+  const content = draft.value
+  const ok = await dms.send(peer.value, content, {
+    onSending: () => {
+      draft.value = ''
+      void nextTick(toBottom)
+    },
+  })
+  if (!ok && !draft.value.trim()) draft.value = content
 }
 
 async function doMute(): Promise<void> {

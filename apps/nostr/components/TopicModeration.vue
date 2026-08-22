@@ -1,12 +1,17 @@
 <template>
   <form class="tm" @submit.prevent="apply">
     <div class="tm__row">
-      <label class="tm__choice" :class="{ 'tm__choice--on': verb === 'lock' }">
-        <input v-model="verb" type="radio" :value="locked ? 'unlock' : 'lock'" class="visually-hidden" />
+      <!-- La sélection se compare au verbe DE LA PUCE, jamais à un littéral :
+           sur un topic déjà épinglé la puce vaut « unpin », donc un `verb ===
+           'pin'` en dur ne s'allumait jamais. Cliquer « désépingler » ne
+           produisait rien à l'écran — la puce « verrouiller » restait la seule
+           allumée — et l'action passait pour cassée alors qu'elle partait bien. -->
+      <label class="tm__choice" :class="{ 'tm__choice--on': verb === lockVerb }">
+        <input v-model="verb" type="radio" :value="lockVerb" class="visually-hidden" />
         {{ locked ? 'déverrouiller' : 'verrouiller le topic' }}
       </label>
-      <label class="tm__choice" :class="{ 'tm__choice--on': verb === 'pin' }">
-        <input v-model="verb" type="radio" :value="pinned ? 'unpin' : 'pin'" class="visually-hidden" />
+      <label class="tm__choice" :class="{ 'tm__choice--on': verb === pinVerb }">
+        <input v-model="verb" type="radio" :value="pinVerb" class="visually-hidden" />
         {{ pinned ? 'désépingler' : 'épingler' }}
       </label>
     </div>
@@ -47,7 +52,12 @@ const mod = useModerationStore()
 const locked = computed(() => mod.isLocked(props.topicId))
 const pinned = computed(() => mod.isPinned(props.topicId))
 
-const verb = ref<'lock' | 'unlock' | 'pin' | 'unpin'>(locked.value ? 'unlock' : 'lock')
+/** Le verbe que porte chaque puce : poser l'état, ou le défaire s'il est là. */
+const lockVerb = computed<Verb>(() => (locked.value ? 'unlock' : 'lock'))
+const pinVerb = computed<Verb>(() => (pinned.value ? 'unpin' : 'pin'))
+
+type Verb = 'lock' | 'unlock' | 'pin' | 'unpin'
+const verb = ref<Verb>(lockVerb.value)
 const reason = ref('')
 
 async function apply(): Promise<void> {
